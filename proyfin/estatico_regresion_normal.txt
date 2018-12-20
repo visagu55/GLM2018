@@ -1,0 +1,33 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-alpha+gama[x1[i]]+beta[1]*x2[i]+beta[2]*x3[i]+beta[3]*x4[i]+beta[4]*x5[i]+beta[5]*x6[i]
+	}
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+for (j in 1:5){
+  beta[j] ~ dnorm(0,0.001)
+}
+
+tau ~ dgamma(0.001,0.001)
+
+#Prediction 1
+for (i in 1:n) { yf1[i] ~ dnorm(mu[i],tau) }
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+

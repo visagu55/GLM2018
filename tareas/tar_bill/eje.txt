@@ -1,0 +1,34 @@
+
+model{
+#Likelihood
+
+for (i in 1:n){
+
+y[i]~dbin(pi[i],e[i])
+
+cloglog(pi[i])<-b[1]+b[2]*x20[i]+b[3]*x50[i]+b[4]*x100[i]+b[5]*x200[i]+b[6]*x500[i]
+
+
+}
+
+
+
+
+#Priors
+
+for (j in 1:6){
+
+b[j]~dnorm(0,0.001)
+
+}
+
+#estimate betas
+
+beta[1]<-b[1]+mean(b[2:6])
+for(j in 2:6){beta[j]<-b[j]-mean(b[2:6])}
+
+
+for (i in 1:n) { yf[i] ~ dbin(pf[i],e[i]) logit(pf[i])<-beta[1]+beta[2]*x20[i]+beta[3]*x50[i]+beta[4]*x100[i]+beta[5]*x200[i]+beta[6]*x500[i]}
+
+
+}

@@ -1,0 +1,393 @@
+---
+title: 'GLM: Examen 2016 '
+output:
+  pdf_document: default
+  html_notebook: default
+---
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+#Configuraci髇 inicial del usuario
+library(R2OpenBUGS)
+options(repos="http://cran.itam.mx")
+wdir<-"C:/Users/psalfi/Documents/ModelosLinealesGeneralizados/Examen"
+setwd(wdir)
+
+##Funciones utiles
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+Result<-function(simula)
+{
+out<-simula$sims.list
+#Para beta0
+b0<-out$beta[,1]
+par(mfrow=c(2,2))
+plot(b0,type="l")
+plot(cumsum(b0)/(1:length(b0)),type="l")
+hist(b0,freq=FALSE)
+acf(b0)
+
+#Para beta1
+b1<-out$beta[,2]
+par(mfrow=c(2,2))
+plot(b1,type="l")
+plot(cumsum(b1)/(1:length(b1)),type="l")
+hist(b1,freq=FALSE)
+acf(b1)
+
+#Probabilidades
+print (prob(b0))
+print (prob(b1))
+}
+```
+
+Ejercicio 7 
+
+Tasas de mortalidad. Una compa耥a de seguros quiere lanzar un nuevo seguro m閐ico para mineros. Para ello desea estimar la probabilidad de muerte ($\pi$$i$), con base en el tiempo de exposici髇 al mineral ($xi$ en horas). Se cuenta con informaci髇 de las muertes registradas entre 1950 y 1959, junto con el tiempo de exposici髇 al mineral y el n鷐ero de mineros expuestos. Realiza un 醤alisis bayesiano completo de los datos y obt閚 la distribuci髇 predictiva del  n鷐ero de muertes suponiendo que hay 100 mineros con un tiempo de exposici髇 de 200 horas. El modelo es el siguiente:
+
+$Yi|\pi$$i$ $\sim Bin(ni,\pi$$i)$ 
+
+$logit(\pi)$$i$=$\beta0 + \beta1 xi$
+
+Con $\beta_{0} \sim N(0,0.001)$ y $\beta_{1} \sim N(0,0.001)$
+
+```{r}
+#Cargamos los datos y graficamos
+datos<-read.table("http://allman.rhon.itam.mx/~lnieto/index_archivos/mortality.txt",header=TRUE)
+n<-nrow(datos)
+datos
+#Dedinimos las variables a predecir de muertos dado  numero de expuestos futuros igual a 100 y el n鷐ero de horas
+m<-1
+nef<-c(100) #numero de expuestos futuros
+xf<-c(200)  #numero de horas
+```
+
+
+De acuerdo al nuestros datos la variable $xi$ corresponde al tiempo de exposici髇 al mineral en horas.
+
+La columna $n$ corresponde al n鷐ero de mineros expuestos
+
+La columna $y$ es el n鷐ero de muertos dado el numero de horas expuestas $xi$
+
+```{r}
+datos
+plot(datos)
+```
+
+
+```{r}
+#Establecemos los imputs necesarios para bugs del modelo Binomial 
+
+#-Defining data-
+data<-list("n"=n,"ne"=datos$n,"y"=datos$y,"x"=datos$x,"m"=m,"nef"=nef,"xf"=xf)
+#-Defining inits-
+inits<-function(){list(beta=rep(0,2),yf1=rep(1,n),yf2=1)}
+
+#-Selecting parameters to monitor-
+parameters<-c("beta","yf1","yf2")
+  #-Running code-
+
+```
+
+```{r}
+#OpenBUGS 
+
+#Modelo Binomial
+#Liga logistica
+exa1<-bugs(data,inits,parameters,model.file="ModBinomial.txt",            n.iter=50000,n.chains=1,n.burnin=5000)
+
+#Liga probit
+exa2<-bugs(data,inits,parameters,model.file="ModBinomial.txt",
+             n.iter=50000,n.chains=1,n.burnin=5000)
+
+#Modelo Poisson
+exa3<-bugs(data,inits,parameters,model.file="ModPoisson.txt",
+               n.iter=50000,n.chains=1,n.burnin=5000)
+
+
+
+#An醠isis de los par醡etros
+#OpenBUGS
+
+out1<-Result(exa1)
+out2<-Result(exa2)
+out3<-Result(exa3)
+
+
+```
+
+```{r}
+#Resumen (estimadores)
+#OpenBUGS
+out1.sum<-exa1$summary
+#print(out1.sum)
+head(out1.sum)
+
+#DIC
+out1.dic<-exa1$DIC
+print(out1.dic)
+
+```
+
+```{r}
+#Resumen (estimadores)
+#OpenBUGS
+out2.sum<-exa2$summary
+#print(out1.sum)
+head(out2.sum)
+
+#DIC
+out2.dic<-exa2$DIC
+print(out2.dic)
+
+```
+
+
+
+```{r}
+#Resumen (estimadores)
+#OpenBUGS
+
+out3.sum<-exa3$summary
+print(out2.sum)
+head(out2.sum)
+
+#DIC
+out3.dic<-exa3$DIC
+print(out3.dic)
+
+```
+
+
+```{r}
+#Predictions
+out1.yf<-out1.sum[grep("yf1",rownames(out1.sum)),]
+out2.yf<-out2.sum[grep("yf1",rownames(out2.sum)),]
+out3.yf<-out3.sum[grep("yf1",rownames(out3.sum)),]
+
+or<-order(datos$x)
+ymin<-min(datos$y,out1.yf[,c(1,3,7)],out2.yf[,c(1,3,7)],out3.yf[,c(1,3,7)])
+ymax<-max(datos$y,out1.yf[,c(1,3,7)],out2.yf[,c(1,3,7)],out3.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(datos$x,datos$y,ylim=c(ymin,ymax))
+
+
+#Modelo 1
+lines(datos$x[or],out1.yf[or,1],lwd=2,col=1)
+lines(datos$x[or],out1.yf[or,3],lty=2,col=1)
+lines(datos$x[or],out1.yf[or,7],lty=2,col=1)
+
+#Modelo 2
+lines(datos$x[or],out2.yf[or,1],lwd=2,col=2)
+lines(datos$x[or],out2.yf[or,3],lty=2,col=2)
+lines(datos$x[or],out2.yf[or,7],lty=2,col=2)
+
+#Modelo 3
+lines(datos$x[or],out3.yf[or,1],lwd=2,col=3)
+lines(datos$x[or],out3.yf[or,3],lty=2,col=3)
+lines(datos$x[or],out3.yf[or,7],lty=2,col=3)
+
+
+
+
+```
+### Esta gr谩fica tiene las tres densidades:
+Cambios-> Var inicial: 1 en vez de 219.47
+
+Negra: la densidad o distribuci贸n inicial -> media 39 con var 1
+
+Roja (verosimilitud - de los datos o muestra)
+  - Tengo tres datos - n=3
+  
+  - Un proceso generador con Varianza de $Var(\bar{X})= (\varrho^2/n)$ 4/3 y la media es la  $\bar{X}$ (40.93)
+  
+  Aqui aparece esta informaci贸n original:
+  Tenemos lo siguiente:
+  $x1,...,xn$ es una m.a.
+  
+  $\bar{X} = (1/n)\Sigma xi$
+  
+  $E(\bar{X})= \mu$
+  
+  $Var(\bar{X})= (\varrho^2/n)$
+
+Verde (distribuci贸n final)
+  Al combinar la inicial y la verosimilitud, la final queda en medio de las dos, porque las varianzas de ambas (inicial y veros.) son chiquitas. 
+  En el primer ejemplo, la varianza de la inicial era inmensa - 219.47  - lo cual indica que s茅 bastante poco de como es esa distribuci贸n, y por lo tanto mis datos son los que dan mas confianza a la distribuci贸n final, por asi decirlo.
+  
+### Vamos a hacer varios cambios
+1. Aumento n de 3 a 30. Es decir, la dist inicial es la misma, pero supongo que en vez de tener 3 datos, tengo 30. De un proceso que genera datos con varianza = 4 y la $\bar{X}$ es la misma (40.9533), por lo tanto fu茅 generada por 30 datos en vez de 3.
+2. Como nuestros datos est谩n centrados mas en 40, tambien modificamos la regi贸n de graficaci贸n de (-10,100) a (30,45) con 200 puntos ("y")
+
+
+```{r}
+# Datos
+xbar<-40.9533
+sig2<-4
+n<-30
+# Distribuci贸n inicial del par谩metro theta
+th0<-39
+sig20<-1
+# Area de graficaci贸n
+y<-seq(35,45,,200)
+# Armo la normal de theta, centrada en theta0=39 y varianza=1
+f0y<-dnorm(y,th0,sqrt(sig20))
+# Armo la normal de los datos - verosimilitud -, en este caso son 30, centrada en xbar=40.9533 y varianza=4
+liky<-dnorm(y,xbar,sqrt(sig2/n))
+# Armo la distribuci贸n final conjugada tomando la base de la inicial con los datos
+sig21<-1/(n/sig2+1/sig20)
+th1<-sig21*(n/sig2*xbar+th0/sig20)
+f1y<-dnorm(y,th1,sqrt(sig21))
+
+# Grafico las 3 juntas
+ymax<-max(f0y,liky,f1y)
+plot(y,f0y,ylim=c(0,ymax),type="l")
+lines(y,liky,lty=2,col=2)
+lines(y,f1y,lty=3,col=3)
+```
+
+驴Qu茅 pas贸? 
+
+Tengo inicial con var=1 (negra)
+
+Tengo la distribuci贸n de mis datos (veros) (roja) que provienen de un proceso con var=4, pero ahora tengo 30 datos en lugar de 3. 
+
+驴Qu茅 le pasa a la dist final?(verde) 
+Se est谩 cargando hacia donde estan los datos. En el caso anterior la dis final estaba en medio de la nega y la roja, es decir, que podriamos decir que pesaban igual la inicial y la final. 
+
+#驴Que pasa si en vez de 30 datos ahora tengo 100?
+
+```{r}
+# Datos
+xbar<-40.9533
+sig2<-4
+n<-100
+# Distribuci贸n inicial del par谩metro theta
+th0<-39
+sig20<-1
+# Area de graficaci贸n
+y<-seq(35,45,,200)
+# Armo la normal de theta, centrada en theta0=39 y varianza=1
+f0y<-dnorm(y,th0,sqrt(sig20))
+# Armo la normal de los datos - verosimilitud -, en este caso son 30, centrada en xbar=40.9533 y varianza=4
+liky<-dnorm(y,xbar,sqrt(sig2/n))
+# Armo la distribuci贸n final conjugada tomando la base de la inicial con los datos
+sig21<-1/(n/sig2+1/sig20)
+th1<-sig21*(n/sig2*xbar+th0/sig20)
+f1y<-dnorm(y,th1,sqrt(sig21))
+
+# Grafico las 3 juntas
+ymax<-max(f0y,liky,f1y)
+plot(y,f0y,ylim=c(0,ymax),type="l")
+lines(y,liky,lty=2,col=2)
+lines(y,f1y,lty=3,col=3)
+```
+
+Mi distribuci貌n final se mueve cada vez m谩s hacia la verosimilitud.
+
+ESTO SIGNIFICA QUE EN LA MEDIDA QUE TENGA MAS Y MAS DATOS, NO IMPORTA LA DISTRIBUCI脫N INICIAL QUE LE HAYA DADO, LA FINAL SE VA A CARGAR O MOVERSE, MAS SIEMPRE HACIA LA VEROSIMILITUD.
+
+# QUE PASA SI CAMBIAMOS LA VARIANZA?
+
+Regresamos al ejemplo original con 3 datos:
+
+```{r}
+# Datos
+xbar<-40.9533
+sig2<-4
+n<-3
+# Distribuci贸n inicial del par谩metro theta
+th0<-39
+sig20<-1
+# Area de graficaci贸n
+y<-seq(35,45,,200)
+# Armo la normal de theta, centrada en theta0=39 y varianza=1
+f0y<-dnorm(y,th0,sqrt(sig20))
+# Armo la normal de los datos - verosimilitud -, en este caso son 30, centrada en xbar=40.9533 y varianza=4
+liky<-dnorm(y,xbar,sqrt(sig2/n))
+# Armo la distribuci贸n final conjugada tomando la base de la inicial con los datos
+sig21<-1/(n/sig2+1/sig20)
+th1<-sig21*(n/sig2*xbar+th0/sig20)
+f1y<-dnorm(y,th1,sqrt(sig21))
+
+# Grafico las 3 juntas
+ymax<-max(f0y,liky,f1y)
+plot(y,f0y,ylim=c(0,ymax),type="l")
+lines(y,liky,lty=2,col=2)
+lines(y,f1y,lty=3,col=3)
+```
+
+Vamos ahora a suponer que nuestro proceso inicial de generaci贸n de datos no tiene var=4 sino var=10.
+
+Entonces, a mis 3 datos no le voy a creer nada o muy poco. Le voy a creer mas a la inicial del par谩metro theta.
+
+```{r}
+# Datos
+xbar<-40.9533
+sig2<-10
+n<-3
+# Distribuci贸n inicial del par谩metro theta
+th0<-39
+sig20<-1
+# Area de graficaci贸n
+y<-seq(35,45,,200)
+# Armo la normal de theta, centrada en theta0=39 y varianza=1
+f0y<-dnorm(y,th0,sqrt(sig20))
+# Armo la normal de los datos - verosimilitud -, en este caso son 30, centrada en xbar=40.9533 y varianza=4
+liky<-dnorm(y,xbar,sqrt(sig2/n))
+# Armo la distribuci贸n final conjugada tomando la base de la inicial con los datos
+sig21<-1/(n/sig2+1/sig20)
+th1<-sig21*(n/sig2*xbar+th0/sig20)
+f1y<-dnorm(y,th1,sqrt(sig21))
+
+# Grafico las 3 juntas
+ymax<-max(f0y,liky,f1y)
+plot(y,f0y,ylim=c(0,ymax),type="l")
+lines(y,liky,lty=2,col=2)
+lines(y,f1y,lty=3,col=3)
+```
+
+La verosimilitud (roja) se hace ancha, plana.
+
+La inicial sigue igual.
+
+驴qu茅 le pasa a la dist final? La final casi no se mueve respecto de la inicial. Esto sucede porque mi proceso generador de datos (roja) tiene una varianza muy grande comparada a la varianza de la dist inicial (negra). 
+
+驴Qu茅 sucede si conservando esta misma varianza=10, genero mas datos 100 en vez de 3.
+
+```{r}
+# Datos
+xbar<-40.9533
+sig2<-10
+n<-100
+# Distribuci贸n inicial del par谩metro theta
+th0<-39
+sig20<-1
+# Area de graficaci贸n
+y<-seq(35,45,,200)
+# Armo la normal de theta, centrada en theta0=39 y varianza=1
+f0y<-dnorm(y,th0,sqrt(sig20))
+# Armo la normal de los datos - verosimilitud -, en este caso son 30, centrada en xbar=40.9533 y varianza=4
+liky<-dnorm(y,xbar,sqrt(sig2/n))
+# Armo la distribuci贸n final conjugada tomando la base de la inicial con los datos
+sig21<-1/(n/sig2+1/sig20)
+th1<-sig21*(n/sig2*xbar+th0/sig20)
+f1y<-dnorm(y,th1,sqrt(sig21))
+
+# Grafico las 3 juntas
+ymax<-max(f0y,liky,f1y)
+plot(y,f0y,ylim=c(0,ymax),type="l")
+lines(y,liky,lty=2,col=2)
+lines(y,f1y,lty=3,col=3)
+```
+
+La final se va hacia donde est谩n MIS DATOS, sin importar que la varianza sea de 10.
+
+#Conclusi贸n: 
+##El proceso de aprendizaje depende del tama帽o de la muestra y de las varianzas de la inicial y la final.
+
+En la pr谩ctica, yo voy a tener un tama帽o de muestra fijo (n) y no lo voy a poder cambiar. Y la varianza de mi proceso generador, o esta fija como en este caso de ejemplo, o la tengo que estimar dentro del proceso. Podria jugar un poco con la varianza porque la tengo que estimar, pero mi tama帽o de muestra, n, si queda fija.
+
+Y mi distribuci贸n inicial, reflejar谩 aquello que yo conozco, pero eso no depender谩 de los datos, es decir, no voy a ver los datos para ver como est谩n, y asi poner mi inicial, NO. 

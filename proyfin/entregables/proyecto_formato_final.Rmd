@@ -1,0 +1,1436 @@
+---
+title: "\vspace{3in} Pronóstico de contrataciones de préstamos bancarios"
+author: "\vspace{3in} Abraham Nieto 51556, Alejandro Hernández 87806 y Omar Reyes 127131"
+date: "\vspace{2in} Diciembre 2018"
+output:
+  html_document: default
+  pdf_document: default
+header-includes: \renewcommand{\contentsname}{Índice}
+toc: yes
+---
+\newpage
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(tidyverse)
+library(R2jags)
+library(forcats)
+library(ggplot2)
+
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+```
+\clearpage
+
+# Introducción
+
+El otorgamiento de créditos es uno de los negocios más rentables para los bancos, por ello asignan mucho presupuesto a la generación de campañas para la colocación de créditos dirigidas a clientes y no clientes. El objetivo, en el primer caso, además de acrecentar el negocio, es incrementar la fidelidad del cliente con el banco y en segunda instancia, atraer nuevos clientes con ofertas crediticias 
+
+Sin embargo, antes de llevar a cabo una campaña, en términos de negocio, es necesario que el área que coloca los créditos establezca las metas que deben lograr y para poder establecer estas metas necesita conocer la historia de las adquisiciones de créditos personales y además poder conocer el número esperado de estos en periodos posteriores, de tal modo que este dato se pueda utilizar como referencia de cuáles son los posibles escenarios en cuanto a los resultados que se pudiesen obtener desde el punto de vista de los datos con los que se cuentan.
+
+Por lo anterior, utilizando las predicciones del número de créditos que se van a colocar cada mes se puede establecer una meta de colocación de créditos para campañas dirigidas bajo el supuesto de que todos lo clientes cumplen las condiciones para dicho otorgamiento. 
+
+Una de las hipótesis más comunes es que para la adquisición de un préstamo bancario hay una variable, además de la posible necesidad financiera, que desempeña un papel muy importante, ésta es la etapa de vida de la persona; es decir, una persona que es el sustento de una familia no tiene ni los mismos gastos ni necesidades que una persona joven que está comenzando su vida laboral, así como alguien que ya está jubilado. En este sentido, también resulta fundamental detectar a cuáles segmentos, desde el punto de vista comercial, es más 'fácil' ofrecerles un crédito y que tengan mayor tasa de aceptación.
+
+
+## Descripción del problema
+
+Se quiere establecer un proceso mensual, mediante un modelo, que pronostique el número de contrataciones de préstamos personales con el fin de establecer la meta mensual de colocaciones de créditos personales a través de campañas.
+
+Para esto se va a desarrollar un modelo que pronostique el número de préstamos colocados esperado y que nos ayude a determinar cuál es el papel que juega el ciclo de vida en el que se encuentra el cliente.
+
+Se cuenta con una base de datos que contiene 24 meses de historia (Agosto 2016 - Agosto 2018) conoformada por 216 registros agrupados por mes y por ciclo de vida de los clientes. La variable "target" corresponde al número de préstamos contratados en cada uno de los ciclos de vida por mes y será la variable a predecir. Adicionalmente, se cuenta con otras 5 variables que podrían tener influencia en el pronóstico y que se describen a detalle más adelante.
+
+## Objetivos
+
+- Construir un modelo que pronostique, puntualmente y por intervalo, el número de préstamos que serán contratados en los siguientes 3 meses y evaluar su desempeño.
+
+
+- Determinar si existe diferencia significativa en las contrataciones de préstamos por ciclo de vida; es decir, si existe algún segmento que tenga mayor influencia en el número de contrataciones totales con el fin de identificar si las estrategias debieran ir dirigidas a dichos segmentos.
+
+
+# Descripción de la información
+
+## Variables
+Las variables presentes en la base de datos son las siguientes:
+
+- __TARGET:__ Número de créditos contratados. Es un entero entre 13 y 150. Esta es nuestra variable respuesta y la renombraremos como $y$
+
+- __ID:__ Número de clientes. Es un entero entre 1939 y 8436.
+
+- __FH_REF:__ Fecha de referencia, inicia el 01-08-2016 y finaliza el 01-07-2018. 
+
+- __TP_SEGMENTO_FINAL2:__ Ciclo de vida de los clientes (ADULTO EN PLENITUD, ADULTOS INDEPENDIENTES, DIVORCIADO, HOGARES CON HIJOS, JOVEN PROFESIONAL, JOVEN TRABAJADOR, PAREJA JOVEN, PAREJAS ADULTAS y PAREJAS SENIOR). La renombraremos como $x_1$.
+
+- __TO_PROM_TO_CARGOS_3M:__ Número promedio de cargos en los últimos 3 meses. Es un número real entre 2.75 y 12.96. La renombraremos como $x_2$.
+
+- __NU_VINC_COGNODATA:__  Número promedio de productos bancarios. Es un número real entre 1.57 y 4.20. La renombraremos como $x_3$.
+
+- __TO_NECESIDAD_FINAN_CAP_3M:__ Cociente del gasto promedio y el saldo. Es un número real entre -1367.4 y 843804.73. La renombraremos como $x_4$.
+
+- __IM_PROM_GASTOS_3M:__ Importe promedio de gastos (compras+cargos recurrentes) en los últimos 3 meses. Es un número real entre 24057.97 y 834859.95. La renombraremos como $x_5$.
+
+- __IM_SUM_SDO_CORTE_1M:__ Importe promedio del saldo de cuenta de cheques. Es un número real entre 828293.4 y 3364972.9. La renombraremos como $x_6$.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(dplyr)
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+camp<-camp %>% mutate(cat=as.numeric(camp$TP_SEGMENTO_FINAL2))
+camp<-arrange(camp,cat)
+
+```
+
+Es importante destacar que como la variable $x_1$ es una variable categórica tenemos que incorporar la restricción para los sus coeficientes asociados, lo cual se detallará en cada uno de los modelos. 
+
+Por otro lado la variables $x_2, \ldots, x_6$ estan en escalas con distintos órdenes de magnitud, por lo que las escalamos.
+
+## Análisis exploratorio de datos
+
+A continuación se muestra un análisis exploratorio de las variables en el dataset con el objetivo de obtener una perspectiva de qué tipo de relaciones hay entre ellas. 
+
+El primer análisis es de las ventas contra el tiempo, para identificar tendencia o estacionalidad en los datos para los 9 segmentos diferentes que son objeto de análisis.
+
+## Totales
+
+En la siguiente gráfica se observa el número de contrataciones totales por mes. Podemos apreciar que en agosto de 2016 tenemos el mayor número histórico de contrataciones (más de 600), debido a algunas estrategias comerciales en ese año. 
+
+Por otro lado, aunque la estacionalidad no es del todo marcada exactamente por mes sí se puede observar por periodos, donde tenemos caídas muy claras en las contrataciones de los últimos meses del año (octubre a diciembre). 
+
+Lo anterior, se puede atribuir muchas veces a que en este periodo la gente tiene más liquidez y al comienzo de año hay un repunte importante sobre todo en Enero ya que normalmente los clientes ya realizaron gastos por lo que su necesidad financiera crece.
+De manera similar, en agosto siempre hay un número importante de contrataciones debido a que en muchos casos hay regreso a clases. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+tot<-camp %>% group_by(FH_REF)%>%summarise(total=sum(target),ctes=sum(ID))%>%mutate(tasa=(total/ctes))
+ggplot(tot,aes(x=as.Date(FH_REF),y=total)) + geom_line(col="blue") +geom_point()+
+  xlab("Fecha") +
+  ylab("Créditos contratados")+theme_minimal()
+                                        
+```
+
+Ahora observemos las tasas de contratación, donde los últimos meses del año tienen una tasa de contratación menor al 1% y los meses con mayor número de contrataciones superan el 1.2% de tasa de contratación.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(tot,aes(x=as.Date(FH_REF),y=tasa)) + geom_line(col="red") +geom_point()+
+  xlab("Fecha") +
+  ylab("Tasa")+theme_minimal()
+```
+
+
+## Segmentos
+
+Los distintos segmentos con los que contamos se describen a continuación:
+
+__Joven Trabajador__
+Clientes entre 18 a 34 años, obreros calificados con ingresos de $3,300 a $11,000 mensuales.
+
+__Joven Profesionista__
+Clientes entre 18 a 34 años, joven cuya profesión requiere una calificación superior para ser desempeñada con ingresos superiores a los $3,200 mensuales.
+
+__Pareja Joven__
+Clientes entre 18 a 34 años, sin hijos y conviven en pareja, con ingresos superiores a los $5,000 mensuales.
+
+__Hogares con hijos__
+Clientes entre 18 a 65 años, conviven con sus hijos en el hogar, con ingresos promedio de $25,000 mensuales.
+
+__Pareja Adulta__
+Clientes entre 35 a 44 años, sin hijos en el hogar, que conviven en pareja, con ingresos superiores a los $7,000 mensuales.
+
+__Pareja Senior__
+Clientes entre 45 a 65 años, sin hijos en el hogar, que conviven en pareja, con ingresos superiores a los $7,000 mensuales.
+
+__Divorciado__
+Clientes entre 35 a 65 años, divorciados.
+
+__Adulto Independiente__
+Clientes entre 35 a 65 años, sin hijos en el hogar, no conviven en pareja, con ingresos superiores a $6,000 mensuales.
+
+__Adulto en Plenitud__
+Clientes mayores a 65 años.
+
+
+De forma similar, en la siguiente gráfica se puede observar la serie de número de créditos contratados por segmento.
+
+En esta gráfica sobresalen los hogares con hijos, aunque en contraste de la tendecia general, cabe resaltar que los segmentos de joven profesional y trabajador tuvieron una tendecia creciente constante a partir del 2018, lo que pudiera significar que más jóvenes cumplieron los requisitos para adquirir préstamos.  
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x = as.Date(FH_REF), y = target)) + 
+  geom_line(aes(color = TP_SEGMENTO_FINAL2, 
+                group = TP_SEGMENTO_FINAL2)) + 
+  guides(color = guide_legend(title = "Segmento"))+
+  ylab('Créditos contratados') + 
+  xlab('Fecha') + theme_minimal()
+```
+
+
+Y si separamos las tendencias: 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp,aes(x=as.Date(FH_REF),y=target)) + geom_line(col="red") +facet_wrap(~TP_SEGMENTO_FINAL2)+
+  xlab("Fecha") +
+  ylab("Créditos contratados")+theme(axis.text.x = element_text(angle=90))
+```
+
+En la gráfica anterior se aprecia que el segmento de hogares con hijos es el que tiene una tendencia más parecida a la total; es decir, con más variabilidad. Lo anterior, nos podría indicar que este segmento tiene una influencia importante en las contrataciones con respecto al total por mes. En contraste, las parejas jóvenes y los divorciados muestran una tendencia más constante.
+
+Los segmentos con mayor número de contrataciones de forma mensual son hogares con hijos y adultos en plenitud. Por su parte, los que menos contrataciones tienen son divorciados y jóvenes trabajadores.
+
+Por otro lado, se incluye una gráfica de caja y brazos donde se notan diferencias entre los distintos segmentos. Como se había mencionado el segmento de hogares con hijos es un grupo totalmente separado y el que tiene mayor volumen de contrataciones. 
+
+Adicionalmente, se puede observar que desde el segmento de adultos en plenitud hasta jóvenes profesionales, al menos el 75% de los meses han sobrepasado las 40 contrataciones y existe un tercer grupo donde el volumen y la distribución de contrataciones mensuales es el mas bajo: pareja joven, divorciado y joven trabajador.  
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, target), y=target,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Créditos contratados')
+```
+
+En la figura anterior podemos constatar que los hogares con hijos es el segmento con mayor número de contrataciones promedio mensual y también en la mediana de los meses; después los adultos en plenitud y parejas senior tienen estadísticos similares y finalmente los divorciados y jóvenes trabajadores son los segmentos con menor número de contrataciones de manera mensual.
+
+Se puede apreciar que éstas distribuciones no necesariamente tienen una relación directamente proporcional al número de clientes en cada segmento por mes; sin embargo, nos muestra que hay segmentos a los que de forma más recurrente se les otorgan préstamos. Tal es el caso de los adultos en plenitud y los hogares con hijos. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, ID), y=ID,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Número de Clientes')
+```
+
+Finalmente, en la tabla siguiente se observan los estadísticos puntuales de cada segmento, donde se puede constatar lo explicado en la figuras anteriores de manera puntual. Los hogares con hijos es el segmento con mayor número de contrataciones promedio mensual (104), también en la mediana de los meses (101) y tiene la mayor tasa promedio de contrataciones por mes (1.58%).
+Los adultos en plenitud y parejas senior tienen estadísticos similares entre sí. Los divorciados y jóvenes trabajadores son los segmentos con menor número de contrataciones de manera mensual y estos últimos también tienen la tasa de contratación promedio mensual más baja (0.5%).
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+# Tabla resumen
+camp %>% 
+  group_by(TP_SEGMENTO_FINAL2) %>%mutate(tasa=(target/ID))%>%
+  summarise(mediana = median(target),
+            promedio = mean(target),tasa_promedio=mean(tasa)*100)  %>% 
+  ungroup %>% 
+  mutate(TP_SEGMENTO_FINAL2 = fct_reorder(TP_SEGMENTO_FINAL2, promedio)) %>% 
+  arrange(desc(TP_SEGMENTO_FINAL2))
+
+
+```
+
+## Variables Numéricas
+
+Para realizar una primera exploración sobre la interacción de las variables, graficamos un correlograma de nuestros datos, transformando la variable de fecha a numérica:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(corrplot)
+campx<-camp
+campx$FH_REF<-as.numeric(campx$FH_REF)
+names(campx) <- c("mes","seg","target","num_ctes","cargos","n_prods","necesidad","gastos","saldo","cat")
+nums <- unlist(lapply(campx, is.numeric))  
+corrplot(cor(campx[,nums]))
+
+```
+
+Podemos observar que las variables más relacionadas con nuestro target o número de contrataciones de créditos son el número de clientes, el número de productos y los gastos.
+
+Otras correlaciones positivas existen entre los cargos y el número de productos, así como entre los gastos y el número de productos. 
+
+Por otro lado vemos una relación negativa entre "cat" que representa el segmento y el numero de clientes, así como entre "cat" y saldos. Esto último se puede atribuir a que se tienes más liquidez mientras más edad se tiene.
+
+El tiempo tiene mayor relación positiva con los cargos y los saldos, lo cual suena coherente en el sentido de que los gastos son distintos en el año y por tanto la liquidez también.
+
+A continuación presentamos una gráfica de las distintas varibles en el tiempo:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+totp<-campx %>% group_by(mes)%>%summarise(total=sum(target),ctes=sum(num_ctes),cargos=mean(cargos),n_prods=mean(n_prods),necesidad=mean(necesidad),gastos=mean(gastos),saldo=mean(saldo))
+#ggplot(tot,aes(x=as.Date(FH_REF))) + geom_line(y=total,col="blue")
+ggplot(totp, aes(x=mes)) + geom_line(aes(y = scale(ctes), colour = "ctes")) + 
+  geom_line(aes(y = scale(cargos,scale = FALSE), colour = "cargos"))+
+  geom_line(aes(y = scale(n_prods), colour = "n_prods"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(necesidad), colour = "necesidad"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(gastos), colour = "gastos"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(saldo), colour = "saldo"))+ 
+  geom_point(aes(y = scale(total), colour = "contrataciones"))+
+  geom_line(aes(y = scale(total), colour = "contrataciones"))+
+  ylab('Valores')
+  
+  
+  
+```
+
+En la gráfica anterior se presentan las variables escaladas con el fin de poder observar mejor el efecto y las contrataciones que se aprecia en en la línea dorada mostrando los puntos a lo largo del tiempo.
+
+Podemos observar que para estos clientes la tendencia de las variables es creciente, excepto la de necesidad financiera. Lo anterior, hace sentido por la forma en que se construyó, sabemos que las variables con mayor correlación con las contrataciones son el importe promedio de gastos de los últimos 3 meses y el número de productos bancarios promedio que poseen los clientes, en ninguno de los casos sus series se ven como las contrataciones.
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(dplyr)
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+y<-as.numeric(camp$target)
+x1<-as.numeric(camp$TP_SEGMENTO_FINAL2)
+x2<-as.numeric(scale(camp$TO_PROM_TO_CARGOS_3M))
+x3<-as.numeric(scale(camp$NU_VINC_COGNODATA))
+x4<-as.numeric(scale(camp$TO_NECESIDAD_FINAN_CAP_3M))
+x5<-as.numeric(scale(camp$IM_PROM_GASTOS_3M))
+x6<-as.numeric(scale(camp$IM_SUM_SDO_CORTE_1M))
+
+```
+
+# Modelado e implementación
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+y<-as.numeric(camp$target)
+x1<-as.numeric(camp$TP_SEGMENTO_FINAL2)
+x2<-as.numeric(scale(camp$TO_PROM_TO_CARGOS_3M))
+x3<-as.numeric(scale(camp$NU_VINC_COGNODATA))
+x4<-as.numeric(scale(camp$TO_NECESIDAD_FINAN_CAP_3M))
+x5<-as.numeric(scale(camp$IM_PROM_GASTOS_3M))
+x6<-as.numeric(scale(camp$IM_SUM_SDO_CORTE_1M))
+
+```
+
+## Modelos Estáticos
+
+Primero comenzamos utilizando dos modelos estáticos, una regresión normal y un modelo lineal generalizado poisson con liga log para ver como se ajustaban a los datos pero primordialmente para ver el comportamiento y poder interpretar cada una de las variables. Asimismo, nos interesa saber si el tipo de categoría guarda relación con el número de créditos otorgados.
+
+### Modelo lineal normal 
+
+Se utilizó el siguiente modelo:
+
+$$ Y_i \sim N(\mu_i,\tau) $$
+$$ \mu_i=\alpha+ \gamma_{j}I_{categoria}+\beta_1X2_i+\beta_2X3_i+ \beta_3X4_i+\beta_4X5_i+\beta_5X6_i $$
+Donde:
+
+$$\sum_{j=1}^9\gamma_{j} =0$$
+$$\alpha\sim N(0,0.001) $$
+
+$$\gamma_j\sim N(0,0.001) $$
+
+$$\tau\sim Gama(0.001,0.001) $$
+$$\beta_j\sim N(0,0.001) $$
+Se utilizó una regresión lineal con errores que se distribuyen normal con media cero y varianza constante. Como la categoría es una variable categórica se incluyó la restricción de que la suma de los coeficientes ($\gamma_j$) fuera cero. Se definió que el intercepto $\alpha$, $\gamma_j$ y las $\beta_j$ provienen de una distribución normal con media 0 y precisión 0.001 para que sean no informativas. Asimismo, se definió que la $\tau$ se distribuye gamma con $a=0.001$ y $b=0.001$.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+
+n<-dim(camp)[1]
+
+data<-list("n"=n,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,tau=1,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+set.seed(3452345)
+est_reg_nor<-jags(data,inits,parameters,model.file="estatico_regresion_normal.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+```
+
+Se corrieron dos cadenas y se revisaron tanto las cadenas como la convergencia  para cada uno de los coeficientes. En todos los casos se apreció convergencia como se puede constatar en las gráficas que se incluyen en el Apéndice.
+
+
+
+
+Graficamos los valores observados contra las estimaciones y notamos que en general las estimaciones no eran tan malas con excepción del caso de hogares con hijos en el que el modelo no está captando adecuadamente la información de este segmento particularmente.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+out.sum.reg<-est_reg_nor$BUGSoutput$summary
+
+#Predictions
+out.yf.reg<-out.sum.reg[grep("yf1",rownames(out.sum.reg)),]
+#ymin<-min(y,out.yf.reg[,c(1,3,7)])
+#ymax<-max(y,out.yf.reg[,c(1,3,7)])
+
+base_graf.reg<-as.data.frame(cbind(camp,out.yf.reg[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.reg)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+
+```
+
+Proseguimos a utiilzar un modelo lineal generalizado como se describe en el siguiente apartado para ver si se mejoraba el ajuste.
+
+### Modelo lineal generalizado poisson con liga log
+
+Este modelo se definió de la siguiente manera:
+
+$$ Y_i \sim Po(\mu_i) $$
+
+$$\mu_i=ne_i\cdot\lambda_i $$
+
+$$ log(\lambda_i)=\alpha+ \gamma_{j}I_{categoria}+\beta_1X2_i+\beta_2X2_i+ \beta_3X4_i+\beta_4X5_i+\beta_5X6_i $$
+Donde:
+
+$$\sum_{j=1}^9\gamma_{j} =0$$
+
+$$\alpha\sim N(0,0.001) $$
+
+$$\gamma_j\sim N(0,0.001) $$
+
+
+$$\beta_j\sim N(0,0.001) $$
+
+Se utilizó un modelo lineal generalizado Poisson con liga log. De nueva cuenta como los segmentos son una variable categórica se incluyó la restricción de que la suma de los coeficientes ($\gamma_j$) fuera cero. Asimismo, se definió que el intercepto $\alpha$, $\gamma_j$ y las $\beta_j$ provienen de una distribución normal con media 0 y precisión 0.001 para que sean no informativas.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+set.seed(3452345)
+est_glm_poi<-jags(data,inits,parameters,model.file="estatico_glm_poisson.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+```
+Para este modelo también se utilizaron 2 cadenas y se constató que la convergencia para cada uno de los coeficientes fue correcta como se puede visualizar en las gráficas que se incluyen en el Apéndice.
+
+Por otro lado, apreciamos que este modelo mejoró la estimación para la categoría hogares con hijos como se puede notar a continuación:
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out.sum.glm<-est_glm_poi$BUGSoutput$summary
+
+#Predictions
+out.yf.glm<-out.sum.glm[grep("yf1",rownames(out.sum.glm)),]
+ymin<-min(y,out.yf.glm[,c(1,3,7)])
+ymax<-max(y,out.yf.glm[,c(1,3,7)])
+
+
+base_graf.glm<-as.data.frame(cbind(camp,out.yf.glm[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.glm)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+
+```
+
+No obstante lo anterior, decidimos definir un modelo que incorpore el efecto del tiempo buscando "captar" de manera más apropiada la información de los datos.
+
+## Modelo dinámico
+
+Decidimos aprovechar la temporalidad de nuestros datos incorporando la variable tiempo a través de un modelo dinámico lineal generalizado. Sabemos de antemano que este modelo debe ajustar mucho mejor, pues recordamos que suelen ajustar perfecto a la serie de tiempo. Con este modelo tenemos como objetivo entender más a detalle la temporalidad de las variables, si su significancia tiene alguna especie de temporalidad o no, y de igual manera poder comparar como se comportan las variables representativas diferenciando por segmento para saber si hace sentido nuestra hipótesis de acotar campañas específicas para los diferentes ciclos de vida de los clientes. Cabe mencionar también que utilizaremos únicamente este modelo para predecir por su naturaleza temporal.  
+
+El modelo dinámico lo definimos como sigue:
+
+Observación:
+
+$$ Y_t|\mu_t\sim Po(\mu_t) $$
+$$\mu_t=ne_t\cdot\lambda_t $$
+
+$$ log(\lambda_t)=\alpha_{t}+ \gamma_{jt}I_{categoria}+\beta_{1t}X_{2t}+\beta_{2t}X_{3t}+ \beta_{3t}X_{4t}+\beta_{4t}X_{5t}+\beta_{5t}X_{6t} $$
+
+Evolución:
+
+$$\beta_{ijt}\sim N(\beta_{ijt-1},\tau_t)  \\\ i=1,\dots,5$$ 
+
+
+
+Donde:
+
+$$\sum_{j=1}^9\gamma_{j} =0$$
+
+$$\beta_{1j1},\ldots, \beta_{5j1}\sim N(0,0.001) $$
+
+$$\alpha\sim N(0,0.001) $$
+
+$$\gamma_j\sim N(0,0.001) $$
+
+$$\tau\sim Gama(100,1) $$
+
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta1=rep(0,216),beta2=rep(0,216),beta3=rep(0,216),beta4=rep(0,216),beta5=rep(0,216),tau=1,yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta1","beta2","beta3","beta4","beta5","mu","yf1")
+
+poisson_dinamico<-jags(data,inits,parameters,model.file="poisson_dinamico.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out.sum.din<-poisson_dinamico$BUGSoutput$summary
+
+#Predictions
+out.yf.din<-out.sum.din[grep("yf1",rownames(out.sum.din)),]
+#ymin<-min(y,out.yf.din[,c(1,3,7)])
+#ymax<-max(y,out.yf.din[,c(1,3,7)])
+
+
+base_graf.din<-as.data.frame(cbind(camp,out.yf.din[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.din)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+```
+
+
+
+El DIC de los tres modelos se muestra a contiuación:
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+dic_lin<-est_reg_nor$BUGSoutput$DIC
+dic_glm_poi<-est_glm_poi$BUGSoutput$DIC
+dic_dinamico<-poisson_dinamico$BUGSoutput$DIC
+tabla_dic<-rbind(round(dic_lin,2),round(dic_glm_poi,2),round(dic_dinamico,2))
+row.names(tabla_dic)<-c("Regresión Lineal Normal","Glm poisson liga log","Dinámico poisson liga log")
+colnames(tabla_dic)<-"DIC"
+tabla_dic
+```
+
+Notamos que el mejor DIC lo obtuvimos con el modelo dinámico poisson con liga log, seguido del glm poisson con liga log y por útlimo la regresión lineal normal. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+r2_lin<-cor(y,out.yf.reg[,1])^2
+r2_glm_poi<-cor(y,out.yf.glm[,1])^2
+r2_dinamico<-cor(y,out.yf.din[,1])^2
+tabla_r2<-rbind(r2_lin,r2_glm_poi,r2_dinamico)
+row.names(tabla_r2)<-c("Regresión Lineal Normal","Glm poisson liga log","Dinámico poisson liga log")
+colnames(tabla_r2)<-"Pseudo-R2"
+tabla_r2
+```
+
+La mejor pseudo $R^2$ se obtuvo con el modelo dinámico por mucha diferencia, lo cual era de esperarse pues, como sabemos, los modelos dinámicos ajustan casi perfectamente a la serie de tiempo. 
+
+
+# Interpretación de modelos
+
+## Modelos estáticos
+
+### Modelo lineal normal
+
+Para el modelo lineal normal se aprecia que el sector 1 (ADULTO EN PLENITUD) y el 4 (HOGARES CON HIJOS) son los que tienen mayor influencia positiva en el número de créditos, mientras que el 3 (DIVORCIADO) y el 7 (PAREJA JOVEN) son los que menor aporte tienen. Esto cuadra perfectamente con lo que esperábamos dado el análisis exploratorio.
+
+En cuanto a las demás variables, la referente a otros productos bancarios ($\beta_2$) es la que tiene mayor efecto sobre el número de créditos que se otorgan, mientras que ni el cociente de gasto vs saldo ($\beta_3$) ni el importe promedio de los últimos 3 meses ($\beta_4$) son significativos, pues su intervalo de confianza incluye al cero.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+coef1<-out.sum.reg[1:16,c(1,3,7)]
+coef1<-coef1[-7,]
+coef1
+
+```
+
+En la siguiente gráfica se muestra la serie de datos observados (en color negro) y los valores estimados (en color rojo). La franja gris, representa el intervalo al 95% de confianza.
+
+Como era de esperarse, debido a la interpretación de los coeficientes, los grupos correspondientes a ADULTOS EN PLENITUD y HOGARES CON HIJOS, son los que presentan valores más altos en el número de créditos colocados. Mientras que DIVORCIADO presenta los valores más bajos.
+
+Este modelo nos da una idea general de la relación de cada sector con respecto al número de créditos que se otorgan, pero no se recomienda su uso para hacer pronósticos. Además, podemos observar que no ajusta adecuadamente por sector. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(base_graf.reg) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Número Créditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+```
+
+### Modelo lineal generalizado poisson con liga log
+
+Al igual que en el modelo anterior la variable con más influencia es $\beta_2$ que corresponde al número promedio de productos bancarios, mientras que $\beta_3$ cociente de gasto vs saldo y $\beta_4$ importe promedio de los últimos 3 meses, siguen sin ser significativas. De manera similar, el sector con más influencia positiva es el 1 (ADULTO EN PLENITUD) . Por su parte, el sector 6 (JOVEN TRABAJADOR) tiene la mayor influencia negativa. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+coef2<-out.sum.glm[1:16,c(1,3,7)]
+coef2<-coef2[-7,]
+coef2
+
+```
+
+El modelo lineal generalizado Poisson con liga log, en general da resultados similares a la regresión normal; sin embargo, en algunos casos como HOGARES CON HIJOS y JOVEN PROFESIONAL genera mejores estimaciones, aunque como observamos, la estimación sigue sin ser adecuada.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(base_graf.glm) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Número Créditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+```
+
+## Modelo dinámico
+
+Por su construcción los datos se ajustan casi perfecto a la serie de tiempo, seguimos identificando que hay sectores donde el ajuste es mejor que otros pero aún así, el modelo es muy superior tanto en la inspección visual como con la pseudo R^2. Por el momento nos limitaremos a hacer un análisis sobre la estimación de los parámetros para más adelante ahondar más en el tema del pronóstico.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+camp<-camp %>% mutate(cat=as.numeric(camp$TP_SEGMENTO_FINAL2))
+camp<-arrange(camp,cat)
+
+ggplot(base_graf.din) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Número Créditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+```
+
+Para el modelo dinámico buscaremos si una variable es representativa o no, lo que es interesante es que podemos encontrar estacionalidad en su importancia para predecir el número de créditos colocados. A continuación graficamos el valor de las betas por segmento para analizar su representatividad a través del tiempo.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+k = 2
+coef2<-as.data.frame(lapply(camp[,1:2], rep, 5))
+coef2<-as.data.frame(cbind(coef2,out.sum.din[2:1081,c(1,3,7)])) %>% rownames_to_column("BETAS") %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m"),mean_transformada=exp(k*mean-1),primer_transformada=exp(k*`2.5%`-1),tercer_transformada=exp(k*`97.5%`-1))
+
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(coef2[1:216,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta1") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta1 por segmento a traves del tiempo")
+
+ggplot(coef2[217:432,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta2") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta2 por segmento a traves del tiempo")
+
+ggplot(coef2[433:648,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta3") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta3 por segmento a traves del tiempo")
+
+ggplot(coef2[649:864,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta4") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta4 por segmento a traves del tiempo")
+
+ggplot(coef2[865:1080,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta5") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta5 por segmento a traves del tiempo")
+```
+
+Observamos que, todas las betas contienen al cero en su intervalo de confianza durante la mayor parte del periodo observado a excepción de $\beta_{1t}$ que es la correspondiente al número promedio de cargos en tres meses. Ahora, queremos identificar el cambio porcentual que resulta de aumentar en una unidad esta variable en cada una de las segmentaciones. 
+
+Sabiendo que el modelo es Poisson y la liga es logarítmica, podemos llegar al siguiente resultado.
+
+Recordemos el modelo que utilizamos para este apartado
+$$log(\lambda_t)=\alpha_{t}+ \gamma_{jt}I_{categoria}+\beta_{1t}X_{2t}+\beta_{2t}X_{3t}+\beta_{3t}X_{4t}+\beta_{4t}X_{5t}+\beta_{5t}X_{6t}$$
+
+
+Sea $x_j = x_i + k$, entonces
+
+$$log(\lambda_{ti})-log(\lambda_{tj}) = \beta_{1t} + k\beta_{1t}$$
+
+Por lo tanto, 
+
+$$e^{k\beta_{1t}} = \lambda_{ti}/\lambda_{tj}$$
+
+Por lo que aplicaremos esta transformación a la $\beta_1$ para analizar con mayor detalle en cuántas unidades aumentaría en cada segmento el número de contrataciones por cada k unidades en la variable correspondiente a dicha $\beta$. Para que las cantidades se ilustren adecuadamente tomaremos $k=2$
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(coef2[1:216,]) + geom_line(aes(x=as.Date(FH_REF),y = mean_transformada),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = primer_transformada, ymax = tercer_transformada), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta1") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Cambio porcentual de beta1 al aumentar en dos unidades")
+```
+
+Podemos observar claramente la estacionalidad en los segmentos PAREJA JOVEN, PAREJAS ADULTAS, PAREJAS SENIOR y JOVEN TRABAJADOR. En HOGARES CON HIJOS también parece haber una estacionalidad aunque un poco menos marcada. Los demás segmentos muestran estacionalidad muy débil; sin embargo, la conclusión es que podemos hacer estrategias de mercado de manera personalizada para cada segmento del Ciclo de Vida del cliente. Lo que resulta súper relevante de este estudio es que podemos no solo saber a quiénes, sino cuándo hacer la comunicación para que la campaña resulte más efectiva y mejor aún, estudiando una sola variable: Número promedio de cargos en 3 meses.
+
+### Predicción
+
+Para no desaprovechar ninguna fecha que tenemos en el dataset, decidimos realizar el estudio descriptivo de las variables por un lado y el análisis predictivo por otro. Recordemos que, como comentamos previamente, únicamente usaremos el modelo dinámico para hacer predicciones por su naturaleza temporal. Sabemos de antemano que las proyecciones se estabilizan después de cierto número de periodos por la construcción del modelo, por lo que decidimos pronosticar solamente 3 meses hacia adelante en la serie de cada segmento. Quitaremos las últimas tres observaciones de cada uno para poder probar qué tan bien está ajustando nuestro modelo.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+#Quitamos los ultimos tres meses de cada segmento
+ult_3_meses<-c(22:24,46:48,70:72,94:96,214:216)
+n<-dim(camp)[1]
+
+y_pron<-y
+y_pron[ult_3_meses]<-NA
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y_pron,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta1=rep(0,216),beta2=rep(0,216),beta3=rep(0,216),beta4=rep(0,216),beta5=rep(0,216),tau=1,yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta1","beta2","beta3","beta4","beta5","mu","yf1")
+
+dinamico_pronos<-jags(data,inits,parameters,model.file="poisson_dinamico.txt",
+                      n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+```
+
+Comparado con el modelo dinámico con todos los datos, su estimación no cambia mucho. Vemos que en general ajusta bastante bien como era de esperarse por ser un modelo dinámico. Incluso las observaciones nuevas están bastante bien pronosticadas.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out.sum.din.pron<-dinamico_pronos$BUGSoutput$summary
+
+#Predictions
+out.yf.din.pron<-out.sum.din.pron[grep("yf1",rownames(out.sum.din.pron)),]
+#ymin<-min(y,out.yf.din[,c(1,3,7)])
+#ymax<-max(y,out.yf.din[,c(1,3,7)])
+
+
+base_graf.din.pron<-as.data.frame(cbind(camp,out.yf.din.pron[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+```
+
+Comparando los DIC del modelo dinámico anterior, este resulta ser mucho mejor. No es intuitivo pero ya sabemos como es JAGS.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+dic_dinamico<-poisson_dinamico$BUGSoutput$DIC
+dic_dinamico_pron<-dinamico_pronos$BUGSoutput$DIC
+tabla_dic<-rbind(round(dic_dinamico,2),round(dic_dinamico_pron,2))
+row.names(tabla_dic)<-c("Dinamico poisson liga log","Dinamico poisson liga log pronostico")
+colnames(tabla_dic)<-"DIC"
+tabla_dic
+```
+
+Recordemos que el modelo pronosticó las últimas tres observaciones, y siendo que por su naturaleza los modelos dinámicos ajustan muy bien a los datos observados, era lógico pensar que la pseudo R^2 sería menor en el modelo predictivo.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+r2_dinamico<-cor(y,out.yf.din[,1])^2
+r2_dinamico_pronos<-cor(y,out.yf.din.pron[,1])^2
+tabla_r2<-rbind(r2_dinamico,r2_dinamico_pronos)
+row.names(tabla_r2)<-c("Dinamico poisson liga log","Dinamico poisson liga log pronostico")
+colnames(tabla_r2)<-"Pseudo-R2"
+tabla_r2
+```
+
+Como era de esperarse encontramos que las observaciones que se predicen, mantienen la tendencia con la que venía la serie en observaciones pasadas. Para aquellos segmentos que la tendencia se mantiene el ajuste es bastante bueno, sin embargo el modelo no tiene la sensibilidad de corregir o predecir cambios en la tendencia, esto se puede ilustrar con la serie de DIVORCIADO. Vemos que la línea roja (predicciones) mantiene un cierto nivel dado lo que se observa previamente, sin embargo la serie real cambia su tendencia y esto provoca que nuestra estimación puntual quede lejos de lo observado, a pesar de eso, vemos que el valor real esta dentro de nuestros intervalos de confianza, que a medida que se alejan de la última observación no pronosticada, cada vez se hacen más amplios.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(base_graf.din.pron) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Numero Creditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+```
+
+# Conclusiones
+
+En cuanto al objetivo número uno, pudimos observar que nuestra hipótesis sobre hacer campañas diferenciadas dependiendo del ciclo de vida y la fecha hace sentido. Insisto en que con esas gráficas podemos contestar el a quién y cuándo sería efectivo comunicar al cliente para hacerle llegar una oferta para contratación de crédito. Resulta interesante analizar la estacionalidad de la serie que se ve más claramente en los intervalos de confianza de la $\beta_1$ transformada. No olvidemos que será muy fácil además saber el momento en que se puede hacer la comunicación dado que la única variable significativa durante la mayoría del tiempo analizado fue la del Número de cargos promedio en tres meses. También hace sentido hacia negocio pues entre más retiros tengas de tu dinero disponible, menos liquidez tendrás y, por lo tanto, más necesitarás un crédito para financiarte.
+
+Hablando sobre el pronóstico, vemos que el modelo dinámico ajusta bastante bien, aunque como lo hemos repetido varias veces a lo largo del trabajo, esto es por la propia naturaleza del modelo. La carencia más importante del modelo es su baja sensibilidad a cambios en la tendencia tratando de predecir más de un periodo hacia adelante. Las campañas de colocación de crédito son trimestrales, por lo que la propuesta a negocio sería actualizar la cifra cada tres meses.
+
+
+# Referencias
+
+- Los datos utilizados fueron obtenidos de un Banco y constituyen una muestra de 64 mil clientes durante 24 meses (agosto 2016 a agosto 2018), en la cual se resumen las contrataciones de créditos personales de forma mensual a lo largo de este periodo.
+Es importante mencionar que los datos fueron modificados a petición de la institución para poder compartirlos; no obstante, no modifica la esencia del problema y la solución.
+
+- Notas de clase del profesor Luis Enrique Nieto Barajas, en particular los capítulos 4 y 5 que hablan sobre modelos lineales generalizados y modelos dinámicos, respectivamente.
+
+- Gelman, A., Carlin, J. B., Stern, H. S. & Rubin, D. Bayesian Data Analysis, 2002, 2a edición. Chapman & Hall: Boca Raton. 
+
+- Gelman, A., Hill, J. Data Analysis Using Regression and Multilevel / Hierarchical Models, 2008, 6a edición, Cambridge University Press. 
+
+
+# Apéndice
+
+##Gráficas comportamiento cadenas y parámetros
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+# MODELO REGRESIÓN NORMAL
+
+# Graficas para ver comportamiento de los parametros estimados: alpha.adj, gama.adj's y beta's
+
+out.reg<-est_reg_nor$BUGSoutput$sims.list
+
+# Para alpha.adj
+alpha.adj<-out.reg$alpha.adj[,1]
+par(mfrow=c(2,2))
+plot(alpha.adj,type="l")
+plot(cumsum(alpha.adj)/(1:length(alpha.adj)),type="l")
+hist(alpha.adj,freq=FALSE)
+acf(alpha.adj)
+
+#Para gama.adj1
+gama.adj1<-out.reg$gama.adj[,1]
+par(mfrow=c(2,2))
+plot(gama.adj1,type="l")
+plot(cumsum(gama.adj1)/(1:length(gama.adj1)),type="l")
+hist(gama.adj1,freq=FALSE)
+acf(gama.adj1)
+
+#Para gama.adj2
+gama.adj2<-out.reg$gama.adj[,2]
+par(mfrow=c(2,2))
+plot(gama.adj2,type="l")
+plot(cumsum(gama.adj2)/(1:length(gama.adj2)),type="l")
+hist(gama.adj2,freq=FALSE)
+acf(gama.adj2)
+
+#Para gama.adj3
+gama.adj3<-out.reg$gama.adj[,3]
+par(mfrow=c(2,2))
+plot(gama.adj3,type="l")
+plot(cumsum(gama.adj3)/(1:length(gama.adj3)),type="l")
+hist(gama.adj3,freq=FALSE)
+acf(gama.adj3)
+
+#Para gama.adj4
+gama.adj4<-out.reg$gama.adj[,4]
+par(mfrow=c(2,2))
+plot(gama.adj4,type="l")
+plot(cumsum(gama.adj4)/(1:length(gama.adj4)),type="l")
+hist(gama.adj4,freq=FALSE)
+acf(gama.adj4)
+
+#Para gama.adj5
+gama.adj5<-out.reg$gama.adj[,5]
+par(mfrow=c(2,2))
+plot(gama.adj5,type="l")
+plot(cumsum(gama.adj5)/(1:length(gama.adj5)),type="l")
+hist(gama.adj5,freq=FALSE)
+acf(gama.adj5)
+
+#Para gama.adj6
+gama.adj6<-out.reg$gama.adj[,6]
+par(mfrow=c(2,2))
+plot(gama.adj6,type="l")
+plot(cumsum(gama.adj6)/(1:length(gama.adj6)),type="l")
+hist(gama.adj6,freq=FALSE)
+acf(gama.adj6)
+
+#Para gama.adj7
+gama.adj7<-out.reg$gama.adj[,7]
+par(mfrow=c(2,2))
+plot(gama.adj7,type="l")
+plot(cumsum(gama.adj7)/(1:length(gama.adj7)),type="l")
+hist(gama.adj7,freq=FALSE)
+acf(gama.adj7)
+
+#Para gama.adj8
+gama.adj8<-out.reg$gama.adj[,8]
+par(mfrow=c(2,2))
+plot(gama.adj8,type="l")
+plot(cumsum(gama.adj8)/(1:length(gama.adj8)),type="l")
+hist(gama.adj8,freq=FALSE)
+acf(gama.adj8)
+
+#Para gama.adj9
+gama.adj9<-out.reg$gama.adj[,9]
+par(mfrow=c(2,2))
+plot(gama.adj9,type="l")
+plot(cumsum(gama.adj9)/(1:length(gama.adj9)),type="l")
+hist(gama.adj9,freq=FALSE)
+acf(gama.adj9)
+
+#Para beta1
+beta1<-out.reg$beta[,1]
+par(mfrow=c(2,2))
+plot(beta1,type="l")
+plot(cumsum(beta1)/(1:length(beta1)),type="l")
+hist(beta1,freq=FALSE)
+acf(beta1)
+
+#Para beta2
+beta2<-out.reg$beta[,2]
+par(mfrow=c(2,2))
+plot(beta2,type="l")
+plot(cumsum(beta2)/(1:length(beta2)),type="l")
+hist(beta2,freq=FALSE)
+acf(beta2)
+
+#Para beta3
+beta3<-out.reg$beta[,3]
+par(mfrow=c(2,2))
+plot(beta3,type="l")
+plot(cumsum(beta3)/(1:length(beta3)),type="l")
+hist(beta3,freq=FALSE)
+acf(beta3)
+
+#Para beta4
+beta4<-out.reg$beta[,4]
+par(mfrow=c(2,2))
+plot(beta4,type="l")
+plot(cumsum(beta4)/(1:length(beta4)),type="l")
+hist(beta4,freq=FALSE)
+acf(beta4)
+
+#Para beta5
+beta5<-out.reg$beta[,5]
+par(mfrow=c(2,2))
+plot(beta5,type="l")
+plot(cumsum(beta5)/(1:length(beta5)),type="l")
+hist(beta5,freq=FALSE)
+acf(beta5)
+```
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+# MODELO LINEAL GENERALIZADO POISSON LIGA LOG
+
+# Graficas para ver comportamiento de los parametros estimados: alpha.adj, gama.adj's y beta's
+
+out.glm<-est_glm_poi$BUGSoutput$sims.list
+
+# Para alpha.adj
+alpha.adj<-out.glm$alpha.adj[,1]
+par(mfrow=c(2,2))
+plot(alpha.adj,type="l")
+plot(cumsum(alpha.adj)/(1:length(alpha.adj)),type="l")
+hist(alpha.adj,freq=FALSE)
+acf(alpha.adj)
+
+#Para gama.adj1
+gama.adj1<-out.glm$gama.adj[,1]
+par(mfrow=c(2,2))
+plot(gama.adj1,type="l")
+plot(cumsum(gama.adj1)/(1:length(gama.adj1)),type="l")
+hist(gama.adj1,freq=FALSE)
+acf(gama.adj1)
+
+#Para gama.adj2
+gama.adj2<-out.glm$gama.adj[,2]
+par(mfrow=c(2,2))
+plot(gama.adj2,type="l")
+plot(cumsum(gama.adj2)/(1:length(gama.adj2)),type="l")
+hist(gama.adj2,freq=FALSE)
+acf(gama.adj2)
+
+#Para gama.adj3
+gama.adj3<-out.glm$gama.adj[,3]
+par(mfrow=c(2,2))
+plot(gama.adj3,type="l")
+plot(cumsum(gama.adj3)/(1:length(gama.adj3)),type="l")
+hist(gama.adj3,freq=FALSE)
+acf(gama.adj3)
+
+#Para gama.adj4
+gama.adj4<-out.glm$gama.adj[,4]
+par(mfrow=c(2,2))
+plot(gama.adj4,type="l")
+plot(cumsum(gama.adj4)/(1:length(gama.adj4)),type="l")
+hist(gama.adj4,freq=FALSE)
+acf(gama.adj4)
+
+#Para gama.adj5
+gama.adj5<-out.glm$gama.adj[,5]
+par(mfrow=c(2,2))
+plot(gama.adj5,type="l")
+plot(cumsum(gama.adj5)/(1:length(gama.adj5)),type="l")
+hist(gama.adj5,freq=FALSE)
+acf(gama.adj5)
+
+#Para gama.adj6
+gama.adj6<-out.glm$gama.adj[,6]
+par(mfrow=c(2,2))
+plot(gama.adj6,type="l")
+plot(cumsum(gama.adj6)/(1:length(gama.adj6)),type="l")
+hist(gama.adj6,freq=FALSE)
+acf(gama.adj6)
+
+#Para gama.adj7
+gama.adj7<-out.glm$gama.adj[,7]
+par(mfrow=c(2,2))
+plot(gama.adj7,type="l")
+plot(cumsum(gama.adj7)/(1:length(gama.adj7)),type="l")
+hist(gama.adj7,freq=FALSE)
+acf(gama.adj7)
+
+#Para gama.adj8
+gama.adj8<-out.glm$gama.adj[,8]
+par(mfrow=c(2,2))
+plot(gama.adj8,type="l")
+plot(cumsum(gama.adj8)/(1:length(gama.adj8)),type="l")
+hist(gama.adj8,freq=FALSE)
+acf(gama.adj8)
+
+#Para gama.adj9
+gama.adj9<-out.glm$gama.adj[,9]
+par(mfrow=c(2,2))
+plot(gama.adj9,type="l")
+plot(cumsum(gama.adj9)/(1:length(gama.adj9)),type="l")
+hist(gama.adj9,freq=FALSE)
+acf(gama.adj9)
+
+#Para beta1
+beta1<-out.glm$beta[,1]
+par(mfrow=c(2,2))
+plot(beta1,type="l")
+plot(cumsum(beta1)/(1:length(beta1)),type="l")
+hist(beta1,freq=FALSE)
+acf(beta1)
+
+#Para beta2
+beta2<-out.glm$beta[,2]
+par(mfrow=c(2,2))
+plot(beta2,type="l")
+plot(cumsum(beta2)/(1:length(beta2)),type="l")
+hist(beta2,freq=FALSE)
+acf(beta2)
+
+#Para beta3
+beta3<-out.glm$beta[,3]
+par(mfrow=c(2,2))
+plot(beta3,type="l")
+plot(cumsum(beta3)/(1:length(beta3)),type="l")
+hist(beta3,freq=FALSE)
+acf(beta3)
+
+#Para beta4
+beta4<-out.glm$beta[,4]
+par(mfrow=c(2,2))
+plot(beta4,type="l")
+plot(cumsum(beta4)/(1:length(beta4)),type="l")
+hist(beta4,freq=FALSE)
+acf(beta4)
+
+#Para beta5
+beta5<-out.glm$beta[,5]
+par(mfrow=c(2,2))
+plot(beta5,type="l")
+plot(cumsum(beta5)/(1:length(beta5)),type="l")
+hist(beta5,freq=FALSE)
+acf(beta5)
+```
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+# MODELO DINAMICO
+
+# Graficas para ver comportamiento de los parametros estimados: alpha.adj y gama.adj's
+
+out.din<-poisson_dinamico$BUGSoutput$sims.list
+
+# Para alpha.adj
+alpha.adj<-out.din$alpha.adj[,1]
+par(mfrow=c(2,2))
+plot(alpha.adj,type="l")
+plot(cumsum(alpha.adj)/(1:length(alpha.adj)),type="l")
+hist(alpha.adj,freq=FALSE)
+acf(alpha.adj)
+
+#Para gama.adj1
+gama.adj1<-out.din$gama.adj[,1]
+par(mfrow=c(2,2))
+plot(gama.adj1,type="l")
+plot(cumsum(gama.adj1)/(1:length(gama.adj1)),type="l")
+hist(gama.adj1,freq=FALSE)
+acf(gama.adj1)
+
+#Para gama.adj2
+gama.adj2<-out.din$gama.adj[,2]
+par(mfrow=c(2,2))
+plot(gama.adj2,type="l")
+plot(cumsum(gama.adj2)/(1:length(gama.adj2)),type="l")
+hist(gama.adj2,freq=FALSE)
+acf(gama.adj2)
+
+#Para gama.adj3
+gama.adj3<-out.din$gama.adj[,3]
+par(mfrow=c(2,2))
+plot(gama.adj3,type="l")
+plot(cumsum(gama.adj3)/(1:length(gama.adj3)),type="l")
+hist(gama.adj3,freq=FALSE)
+acf(gama.adj3)
+
+#Para gama.adj4
+gama.adj4<-out.din$gama.adj[,4]
+par(mfrow=c(2,2))
+plot(gama.adj4,type="l")
+plot(cumsum(gama.adj4)/(1:length(gama.adj4)),type="l")
+hist(gama.adj4,freq=FALSE)
+acf(gama.adj4)
+
+#Para gama.adj5
+gama.adj5<-out.din$gama.adj[,5]
+par(mfrow=c(2,2))
+plot(gama.adj5,type="l")
+plot(cumsum(gama.adj5)/(1:length(gama.adj5)),type="l")
+hist(gama.adj5,freq=FALSE)
+acf(gama.adj5)
+
+#Para gama.adj6
+gama.adj6<-out.glm$gama.adj[,6]
+par(mfrow=c(2,2))
+plot(gama.adj6,type="l")
+plot(cumsum(gama.adj6)/(1:length(gama.adj6)),type="l")
+hist(gama.adj6,freq=FALSE)
+acf(gama.adj6)
+
+#Para gama.adj7
+gama.adj7<-out.din$gama.adj[,7]
+par(mfrow=c(2,2))
+plot(gama.adj7,type="l")
+plot(cumsum(gama.adj7)/(1:length(gama.adj7)),type="l")
+hist(gama.adj7,freq=FALSE)
+acf(gama.adj7)
+
+#Para gama.adj8
+gama.adj8<-out.din$gama.adj[,8]
+par(mfrow=c(2,2))
+plot(gama.adj8,type="l")
+plot(cumsum(gama.adj8)/(1:length(gama.adj8)),type="l")
+hist(gama.adj8,freq=FALSE)
+acf(gama.adj8)
+
+#Para gama.adj9
+gama.adj9<-out.din$gama.adj[,9]
+par(mfrow=c(2,2))
+plot(gama.adj9,type="l")
+plot(cumsum(gama.adj9)/(1:length(gama.adj9)),type="l")
+hist(gama.adj9,freq=FALSE)
+acf(gama.adj9)
+
+
+```
+
+## Código JAGS
+
+
+```
+####### "estatico_regresion_normal.txt"
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-alpha+gama[x1[i]]+beta[1]*x2[i]+beta[2]*x3[i]+beta[3]*x4[i]+beta[4]*x5[i]+beta[5]*x6[i]
+	}
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+for (k in 1:5){
+  beta[k] ~ dnorm(0,0.001)
+}
+
+tau ~ dgamma(0.001,0.001)
+
+#Prediction 1
+for (i in 1:n) { yf1[i] ~ dnorm(mu[i],tau) }
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+####### "estatico_glm_poisson.txt"
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dpois(mu[i])
+	mu[i]<-ne[i]*lambda[i]
+	log(lambda[i])<-alpha+gama[x1[i]]+beta[1]*x2[i]+beta[2]*x3[i]+beta[3]*x4[i]+beta[4]*x5[i]+beta[5]*x6[i]
+	}
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+for (k in 1:5){
+  beta[k] ~ dnorm(0,0.001)
+}
+
+#Prediction 1
+for (i in 1:n) { 
+  yf1[i] ~ dpois(mu[i]) 
+}
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+####### "poisson_dinamico.txt"
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dpois(mu[i])
+	mu[i]<-ne[i]*lambda[i]
+	log(lambda[i])<-alpha+gama[x1[i]]+beta1[i]*x2[i]+beta2[i]*x3[i]+beta3[i]*x4[i]+beta4[i]*x5[i]+beta5[i]*x6[i]
+	}
+	
+for (s in (10):n) {
+  beta1[s] ~ dnorm(beta1[s-9], tau)
+  beta2[s] ~ dnorm(beta2[s-9], tau)
+  beta3[s] ~ dnorm(beta3[s-9], tau)
+  beta4[s] ~ dnorm(beta4[s-9], tau)
+  beta5[s] ~ dnorm(beta5[s-9], tau)
+}
+
+for (w in 1:9){
+ beta1[w] ~ dnorm(0,0.001)
+ beta2[w] ~ dnorm(0,0.001)
+ beta3[w] ~ dnorm(0,0.001)
+ beta4[w] ~ dnorm(0,0.001)
+ beta5[w] ~ dnorm(0,0.001)
+}
+tau ~ dgamma(100, 1)
+	
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+
+#Prediction 1
+for (i in 1:n) { 
+  yf1[i] ~ dpois(mu[i]) 
+}
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+```
+
+## Código R
+
+```
+library(tidyverse)
+library(R2jags)
+library(forcats)
+library(ggplot2)
+
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+camp<-camp %>% mutate(cat=as.numeric(camp$TP_SEGMENTO_FINAL2))
+camp<-arrange(camp,cat)
+
+
+tot<-camp %>% group_by(FH_REF)%>%summarise(total=sum(target),ctes=sum(ID))%>%mutate(tasa=(total/ctes))
+ggplot(tot,aes(x=as.Date(FH_REF),y=total)) + geom_line(col="blue") +geom_point()+
+  xlab("Fecha") +
+  ylab("Creditos contratados")+theme_minimal()
+  
+
+ggplot(tot,aes(x=as.Date(FH_REF),y=tasa)) + geom_line(col="red") +geom_point()+
+  xlab("Fecha") +
+  ylab("Tasa")+theme_minimal()
+  
+
+ggplot(camp, aes(x = as.Date(FH_REF), y = target)) + 
+  geom_line(aes(color = TP_SEGMENTO_FINAL2, 
+                group = TP_SEGMENTO_FINAL2)) + 
+  guides(color = guide_legend(title = "Segmento"))+
+  ylab('Créditos contratados') + 
+  xlab('Fecha') + theme_minimal()
+  
+ggplot(camp,aes(x=as.Date(FH_REF),y=target)) + geom_line(col="red") +facet_wrap(~TP_SEGMENTO_FINAL2)+
+  xlab("Fecha") +
+  ylab("Creditos contratados")+theme(axis.text.x = element_text(angle=90))
+  
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, target), y=target,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Créditos contratados')
+  
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, ID), y=ID,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Número de Clientes')
+  
+camp %>% 
+  group_by(TP_SEGMENTO_FINAL2) %>%mutate(tasa=(target/ID))%>%
+  summarise(mediana = median(target),
+            promedio = mean(target),tasa_promedio=mean(tasa)*100)  %>% 
+  ungroup %>% 
+  mutate(TP_SEGMENTO_FINAL2 = fct_reorder(TP_SEGMENTO_FINAL2, promedio)) %>% 
+  arrange(desc(TP_SEGMENTO_FINAL2))
+
+library(corrplot)
+campx<-camp
+campx$FH_REF<-as.numeric(campx$FH_REF)
+names(campx) <- c("mes","seg","target","num_ctes","cargos","n_prods","necesidad","gastos","saldo","cat")
+nums <- unlist(lapply(campx, is.numeric))  
+corrplot(cor(campx[,nums]))
+
+totp<-campx %>% group_by(mes)%>%summarise(total=sum(target),ctes=sum(num_ctes),cargos=mean(cargos),n_prods=mean(n_prods),necesidad=mean(necesidad),gastos=mean(gastos),saldo=mean(saldo))
+#ggplot(tot,aes(x=as.Date(FH_REF))) + geom_line(y=total,col="blue")
+ggplot(totp, aes(x=mes)) + geom_line(aes(y = scale(ctes), colour = "ctes")) + 
+  geom_line(aes(y = scale(cargos,scale = FALSE), colour = "cargos"))+
+  geom_line(aes(y = scale(n_prods), colour = "n_prods"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(necesidad), colour = "necesidad"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(gastos), colour = "gastos"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(saldo), colour = "saldo"))+ 
+  geom_point(aes(y = scale(total), colour = "contrataciones"))+
+  geom_line(aes(y = scale(total), colour = "contrataciones"))+
+  ylab('Valores')
+  
+
+library(dplyr)
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+y<-as.numeric(camp$target)
+x1<-as.numeric(camp$TP_SEGMENTO_FINAL2)
+x2<-as.numeric(scale(camp$TO_PROM_TO_CARGOS_3M))
+x3<-as.numeric(scale(camp$NU_VINC_COGNODATA))
+x4<-as.numeric(scale(camp$TO_NECESIDAD_FINAN_CAP_3M))
+x5<-as.numeric(scale(camp$IM_PROM_GASTOS_3M))
+x6<-as.numeric(scale(camp$IM_SUM_SDO_CORTE_1M))
+
+##### MODELO REGRESION NORMAL
+
+n<-dim(camp)[1]
+
+data<-list("n"=n,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,tau=1,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+set.seed(3452345)
+est_reg_nor<-jags(data,inits,parameters,model.file="estatico_regresion_normal.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+
+
+out.sum.reg<-est_reg_nor$BUGSoutput$summary
+
+#Predictions
+out.yf.reg<-out.sum.reg[grep("yf1",rownames(out.sum.reg)),]
+#ymin<-min(y,out.yf.reg[,c(1,3,7)])
+#ymax<-max(y,out.yf.reg[,c(1,3,7)])
+
+base_graf.reg<-as.data.frame(cbind(camp,out.yf.reg[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.reg)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+
+####### GLM POISSON LINK LOG
+
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+set.seed(3452345)
+est_glm_poi<-jags(data,inits,parameters,model.file="estatico_glm_poisson.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+
+
+out.sum.glm<-est_glm_poi$BUGSoutput$summary
+
+#Predictions
+out.yf.glm<-out.sum.glm[grep("yf1",rownames(out.sum.glm)),]
+ymin<-min(y,out.yf.glm[,c(1,3,7)])
+ymax<-max(y,out.yf.glm[,c(1,3,7)])
+
+
+base_graf.glm<-as.data.frame(cbind(camp,out.yf.glm[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.glm)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+
+
+###### MODELO DINÁMICO
+
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta1=rep(0,216),beta2=rep(0,216),beta3=rep(0,216),beta4=rep(0,216),beta5=rep(0,216),tau=1,yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta1","beta2","beta3","beta4","beta5","mu","yf1")
+
+poisson_dinamico<-jags(data,inits,parameters,model.file="poisson_dinamico.txt",
+                n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+
+
+out.sum.din<-poisson_dinamico$BUGSoutput$summary
+
+#Predictions
+out.yf.din<-out.sum.din[grep("yf1",rownames(out.sum.din)),]
+#ymin<-min(y,out.yf.din[,c(1,3,7)])
+#ymax<-max(y,out.yf.din[,c(1,3,7)])
+
+
+base_graf.din<-as.data.frame(cbind(camp,out.yf.din[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+ggplot(base_graf.din)+geom_point(aes(target,mean,color=TP_SEGMENTO_FINAL2))+geom_abline()+xlab("y")+ylab("y estimada")
+
+
+dic_lin<-est_reg_nor$BUGSoutput$DIC
+dic_glm_poi<-est_glm_poi$BUGSoutput$DIC
+dic_dinamico<-poisson_dinamico$BUGSoutput$DIC
+tabla_dic<-rbind(round(dic_lin,2),round(dic_glm_poi,2),round(dic_dinamico,2))
+row.names(tabla_dic)<-c("Regresion Lineal Normal","Glm poisson liga log","Dinamico poisson liga log")
+colnames(tabla_dic)<-"DIC"
+tabla_dic
+
+r2_lin<-cor(y,out.yf.reg[,1])^2
+r2_glm_poi<-cor(y,out.yf.glm[,1])^2
+r2_dinamico<-cor(y,out.yf.din[,1])^2
+tabla_r2<-rbind(r2_lin,r2_glm_poi,r2_dinamico)
+row.names(tabla_r2)<-c("Regresion Lineal Normal","Glm poisson liga log","Dinamico poisson liga log")
+colnames(tabla_r2)<-"Pseudo-R2"
+tabla_r2
+
+coef1<-out.sum.reg[1:16,c(1,3,7)]
+coef1<-coef1[-7,]
+coef1
+
+ggplot(base_graf.reg) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Numero Creditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+
+coef2<-out.sum.glm[1:16,c(1,3,7)]
+coef2<-coef2[-7,]
+coef2
+
+ggplot(base_graf.glm) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Numero Creditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+
+
+ggplot(base_graf.din) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Numero Creditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+
+k = 2
+coef2<-as.data.frame(lapply(camp[,1:2], rep, 5))
+coef2<-as.data.frame(cbind(coef2,out.sum.din[2:1081,c(1,3,7)])) %>% rownames_to_column("BETAS") %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m"),mean_transformada=exp(k*mean-1),primer_transformada=exp(k*`2.5%`-1),tercer_transformada=exp(k*`97.5%`-1))
+
+ggplot(coef2[1:216,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta1") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta1 por segmento a traves del tiempo")
+
+ggplot(coef2[217:432,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta2") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta2 por segmento a traves del tiempo")
+
+ggplot(coef2[433:648,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta3") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta3 por segmento a traves del tiempo")
+
+ggplot(coef2[649:864,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta4") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta4 por segmento a traves del tiempo")
+
+ggplot(coef2[865:1080,]) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta5") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Beta5 por segmento a traves del tiempo")
+
+ggplot(coef2[1:216,]) + geom_line(aes(x=as.Date(FH_REF),y = mean_transformada),color = 'red')+ geom_hline(yintercept = 0) +geom_ribbon(aes(x=as.Date(FH_REF),ymin = primer_transformada, ymax = tercer_transformada), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Beta1") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45)) + ggtitle("Cambio porcentual de beta1 al aumentar en dos unidades")
+
+#Quitamos los ultimos tres meses de cada segmento
+ult_3_meses<-c(22:24,46:48,70:72,94:96,214:216)
+n<-dim(camp)[1]
+
+y_pron<-y
+y_pron[ult_3_meses]<-NA
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y_pron,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta1=rep(0,216),beta2=rep(0,216),beta3=rep(0,216),beta4=rep(0,216),beta5=rep(0,216),tau=1,yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta1","beta2","beta3","beta4","beta5","mu","yf1")
+
+dinamico_pronos<-jags(data,inits,parameters,model.file="poisson_dinamico.txt",
+                      n.iter=15000,n.chains=2,n.burnin=1500,n.thin=1)
+                      
+out.sum.din.pron<-dinamico_pronos$BUGSoutput$summary
+
+#Predictions
+out.yf.din.pron<-out.sum.din.pron[grep("yf1",rownames(out.sum.din.pron)),]
+#ymin<-min(y,out.yf.din[,c(1,3,7)])
+#ymax<-max(y,out.yf.din[,c(1,3,7)])
+
+
+base_graf.din.pron<-as.data.frame(cbind(camp,out.yf.din.pron[,c(1,3,7)])) %>% mutate(fecha=format(as.Date(FH_REF),"%Y-%m")) 
+
+dic_dinamico<-poisson_dinamico$BUGSoutput$DIC
+dic_dinamico_pron<-dinamico_pronos$BUGSoutput$DIC
+tabla_dic<-rbind(round(dic_dinamico,2),round(dic_dinamico_pron,2))
+row.names(tabla_dic)<-c("Dinamico poisson liga log","Dinamico poisson liga log pronostico")
+colnames(tabla_dic)<-"DIC"
+tabla_dic
+
+
+r2_dinamico<-cor(y,out.yf.din[,1])^2
+r2_dinamico_pronos<-cor(y,out.yf.din.pron[,1])^2
+tabla_r2<-rbind(r2_dinamico,r2_dinamico_pronos)
+row.names(tabla_r2)<-c("Dinamico poisson liga log","Dinamico poisson liga log pronostico")
+colnames(tabla_r2)<-"Pseudo-R2"
+tabla_r2
+
+ggplot(base_graf.din.pron) + geom_line(aes(x=as.Date(FH_REF),y = mean),color = 'red')  + geom_line(aes(x=as.Date(FH_REF),y = target), color = 'gray50') +geom_ribbon(aes(x=as.Date(FH_REF),ymin = `2.5%`, ymax = `97.5%`), alpha = .3)  + facet_wrap(~TP_SEGMENTO_FINAL2,scales='free')+ylab("Numero Creditos") + xlab("Fecha")+theme_minimal()+theme(axis.text.x = element_text(size=6,angle=45))
+
+
+
+```

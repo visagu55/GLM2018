@@ -1,0 +1,306 @@
+---
+title: "GLM: ExamenRegresion2016 "
+author: "Paulina Lisett Salgado Figueroa-160314"
+output:
+  pdf_document: default
+---
+```{r}
+#Configuración inicial del usuario
+library(R2OpenBUGS)
+options(repos="http://cran.itam.mx")
+wdir<-"C:/Users/psalfi/Documents/ModelosLinealesGeneralizados/Examen"
+setwd(wdir)
+
+##Funciones utiles
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+Result<-function(simula)
+{
+out<-simula$sims.list
+#Para beta0
+b0<-out$beta[,1]
+par(mfrow=c(2,2))
+plot(b0,type="l")
+plot(cumsum(b0)/(1:length(b0)),type="l")
+hist(b0,freq=FALSE)
+acf(b0)
+
+#Para beta1
+b1<-out$beta[,2]
+par(mfrow=c(2,2))
+plot(b1,type="l")
+plot(cumsum(b1)/(1:length(b1)),type="l")
+hist(b1,freq=FALSE)
+acf(b1)
+
+#Probabilidades
+print (prob(b0))
+print (prob(b1))
+}
+
+```
+1. El Mercado asegurado en México opera en diferentes sectores. Siete de estos sectores son: Accidentes y enfermedades (ACC), Agricultura y ganadería (AGR), automóviles (AUT), gastos médicos mayores (MED), Incendios (FIR), responsabilidad civil y riesgos profesionales (LIA) y salud (HEA). Es de interés para las compañías de seguros predecir el monto de reclamación (Yi) en términos de la prima cobrada (Xi), medida en millones de pesos. La comisión nacional de seguros y fianzas junta la información de todas las compañías de seguro año con año para cada uno de los 32 etados de la republica y en algunos casos para el extranjero.
+
+Pata el año 2010 se cuenta con n=228 registros clasificados por sector asegurados.
+
+a) Realiza una gráfica de dispersión entre $Xi$ vs $Yi$. Comenta sobre la posible relación entre estas dos variables 
+
+Se observa una alta correlacción positiva de los datos, es decir al incrementarse las primas emitidas el número de siniestro de igual forma se ve incrementado.
+
+```{r}
+#Cargamos los datos y graficamos
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+
+x<-log(datos$Prima)
+y<-log(datos$Siniestro)
+
+plot(x,y)
+```
+
+b) Ajusta un modelo de regresión lineal normal a los datos
+```{r}
+  #Modelo Normal
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+n<-nrow(datos)
+
+x<-log(datos$Prima)
+y<-log(datos$Siniestro)
+
+
+#-Defining data-
+  data<-list("n"=n, "y"=y,"x"=x)
+  #-Defining inits-
+  inits<-function(){list(beta=rep(0,2),tau=1,yf=rep(0,n))}
+  
+  #-Selecting parameters to monitor-
+  parameters<-c("beta","tau","yf")
+  #-Running code-
+
+    exa_b<-bugs(data,inits,parameters,model.file="Exa_b.txt",            n.iter=50000,n.chains=1,n.burnin=5000)
+
+  #Análisis de los parámetros
+  #OpenBUGS
+  
+  out<-exa_b$sims.list
+  
+  b0<-out$beta[,1]
+  par(mfrow=c(2,2))
+  plot(b0,type="l")
+  plot(cumsum(b0)/(1:length(b0)),type="l")
+  hist(b0,freq=FALSE)
+  acf(b0)
+  
+  #Para beta1
+  b1<-out$beta[,2]
+  par(mfrow=c(2,2))
+  plot(b1,type="l")
+  plot(cumsum(b1)/(1:length(b1)),type="l")
+  hist(b1,freq=FALSE)
+  acf(b1)
+  
+  #Probabilidades
+  print (prob(b0))
+  print (prob(b1))
+  
+  #OpenBUGS
+  outb.sum<-exa_b$summary
+  #print(out1.sum)
+  head(outb.sum)
+  
+  #DIC
+  outb.dic<-exa_b$DIC
+  print(outb.dic)
+
+
+
+```
+c)Ajusta un modelo lineal generalizado gamma
+
+```{r}
+#Modelo de regresión gamma
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+n<-nrow(datos)
+
+y<-(datos$Siniestro)/1000
+x<-(datos$Prima)/1000
+
+#-Defining data-
+data<-list("n"=n, "y"=y,"x"=x)
+#-Defining inits-
+
+inits<-function(){list(beta=rep(1,2),r=1,yf=rep(0,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("beta","r","yf")
+#-Running code-
+
+
+exa_c<-bugs(data,inits,parameters,model.file="Exa_c.txt",            n.iter=10000,n.chains=1,n.burnin=1000,debug=TRUE)
+
+
+  #OpenBUGS
+  outc.sum<-exa_c$summary
+  #print(out1.sum)
+  head(outc.sum)
+  
+  #DIC
+  outc.dic<-exa_c$DIC
+  print(outc.dic)
+  
+
+```
+
+d)Compara los modelos de los incisos (b) y (c) de acuerdo con su capacidad predictiva y los DIC y comenta
+
+
+
+e)
+
+```{r}
+  #Modelo Normal
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+n<-nrow(datos)
+
+datoslog<-datos
+x<-log(datoslog$Prima)
+y<-log(datoslog$Siniestro)
+
+  #-Defining data-
+  data<-list("n"=n, "y"=y,"x"=x,
+             "z2"=datoslog$z2,
+             "z3"=datoslog$z3,
+             "z4"=datoslog$z4,
+             "z5"=datoslog$z5,
+             "z6"=datoslog$z6,
+             "z7"=datoslog$z7)
+  #-Defining inits-
+  inits<-function(){list(beta=rep(0,2),tau=1,yf=rep(0,n),a=rep(0,6),b=rep(0,6))}
+  
+  #-Selecting parameters to monitor-
+  parameters<-c("beta","a","b","tau","yf")
+  #-Running code-
+
+    exa_e<-bugs(data,inits,parameters,model.file="Exa_e.txt",            n.iter=10000,n.chains=1,n.burnin=1000,debug=TRUE)
+
+  #Análisis de los parámetros
+  #OpenBUGS
+  
+  out<-exa_e$sims.list
+  
+  b0<-out$beta[,1]
+  par(mfrow=c(2,2))
+  plot(b0,type="l")
+  plot(cumsum(b0)/(1:length(b0)),type="l")
+  hist(b0,freq=FALSE)
+  acf(b0)
+  
+  #Para beta1
+  b1<-out$beta[,2]
+  par(mfrow=c(2,2))
+  plot(b1,type="l")
+  plot(cumsum(b1)/(1:length(b1)),type="l")
+  hist(b1,freq=FALSE)
+  acf(b1)
+  
+  #Probabilidades
+  print (prob(b0))
+  print (prob(b1))
+  
+  #OpenBUGS
+  oute.sum<-exa_e$summary
+  #print(out1.sum)
+  head(oute.sum)
+  
+  #DIC
+  oute.dic<-exa_e$DIC
+  print(oute.dic)
+
+
+
+```
+
+
+f)¿Cuál es la interpretación de alfa y beta en el modelo del inciso (e)? Que interpretación tiene
+
+
+
+g)Ajusta un modelo lineal generalizado gamma para los montos de reclamación
+
+```{r}
+#Modelo de regresión gamma
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+n<-nrow(datos)
+y<-(datos$Siniestro)/1000
+x<-(datos$Prima)/1000
+
+#-Defining data-
+data<-list("n"=n, "y"=y,"x"=x,
+             "z2"=datos$z2,
+             "z3"=datos$z3,
+             "z4"=datos$z4,
+             "z5"=datos$z5,
+             "z6"=datos$z6,
+             "z7"=datos$z7)
+  #-Defining inits-
+
+inits<-function(){list(beta=rep(1,2),a=rep(1,6),b=rep(1,6),r=1,yf=rep(0,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("beta","a","b","r","yf")
+#-Running code-
+
+
+exa_g<-bugs(data,inits,parameters,model.file="Exa_g.txt",            n.iter=10000,n.chains=1,n.burnin=1000)
+
+
+
+#Análisis de los parámetros
+#OpenBUGS
+
+out<-exa_g$sims.list
+
+b0<-out$beta[,1]
+par(mfrow=c(2,2))
+plot(b0,type="l")
+plot(cumsum(b0)/(1:length(b0)),type="l")
+hist(b0,freq=FALSE)
+acf(b0)
+
+#Para beta1
+b1<-out$beta[,2]
+par(mfrow=c(2,2))
+plot(b1,type="l")
+plot(cumsum(b1)/(1:length(b1)),type="l")
+hist(b1,freq=FALSE)
+acf(b1)
+
+#Probabilidades
+print (prob(b0))
+print (prob(b1))
+
+  #OpenBUGS
+  out_g.sum<-exa_g$summary
+  print(out_g.sum)
+  head(out_g.sum)
+  
+  #DIC
+  outc.dic<-exa_c$DIC
+  print(outc.dic)
+  
+
+```
+
+

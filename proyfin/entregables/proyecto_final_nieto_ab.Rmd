@@ -1,0 +1,245 @@
+---
+title: "Pronóstico de contrataciones de préstamos bancarios"
+author: "Abraham Nieto 51556, Alejandro Hernández 87806 y Omar Reyes 127131"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(tidyverse)
+library(R2jags)
+library(forcats)
+#library(plyr)
+
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+```
+
+### Introducción
+
+Es bien sabido que el otorgamiento de créditos es uno de los negocios más rentables para los bancos, es por ello que estos asignan mucho presupuesto a la generación de campañas para la colocación de estos dirigidas a clientes y no clientes de tal modo que el objetivo, en el primer caso, además de acrecentar el negocio también es incrementar la fidelidad del cliente con el banco y en el segundo caso hablamos de atraer nuevos clientes con ofertas crediticias 
+
+Por supuesto, se cuenta con información de una muestra de 64mil clientes donde históricamente algunos han contratado un préstamo personal a lo largo de los últimos 2 años en cada uno de los meses estas contrataciones se han hecho debido a que el cliente ha recibido una oferta del banco o bien de modo proactivo el cliente lo ha solicitado.
+
+Uno de los principales objetivos es crear campañas dirigidas donde esto significa una personalización en el modo de comunicarle la oferta y esto es posible ya que se cuenta con datos como saldos,gastos,créditos, productos bancarios, movimientos,etc. del cliente, pero antes de llevar a cabo una campaña, en términos de negocio, es necesario establecer las metas que, como área de colocación de créditos, debemos lograr y para poder establecer estas metas necesitamos conocer  la historia de las adquisiciones de créditos personales y además poder conocer el número esperado de estos, en periodos posteriores, de tal modo que este dato se pueda utilizar como referencia de cuales son los posibles escenarios en cuanto a los resultados que se pudiesen obtener desde el punto de vista de los datos con los que se cuentan, entonces utilizando las predicciones del número de créditos que se van a colocar cada mes podemos establecer una meta de colocación de créditos para campañas dirigidas bajo el supuesto de que todos lo clientes cumplen las condiciones para dicho otorgamiento. 
+
+Una de las hipótesis más comunes es que para la adquisición de un préstamo bancario hay una variable, además de la posible necesidad financiera, que desempeña un papel muy importante está es la etapa de vida de la gente, es decir, por ejemplo una persona que es el sustento de una familia no tiene ni los mismos gastos ni necesidades queuna persona joven que está comenzando su vida laboral así como alguién que ya está jubilado es por eso, que es importante detectar a cuales de estos segmentos, desde el punto de vista comercial, es más 'fácil' ofrecerles un crédito y que tengan mayor tasa de aceptación.
+
+
+### Descripción del problema
+
+Se quiere establecer un proceso, mediante un modelo, mensual que pronostique el número de contrataciones de préstamos personales con el fin de establecer la meta mensual de colocaciones de créditos personales  a través de campañas, para esto se busca construir un modelo que pronostique el número de préstamos colocados  esperado, para ello contamos con 24 meses de historia (Agosto 2016-Agosto 2018) donde contamos con un dataset de 216 registros agrupados por mes y por ciclo de vida de nuestros clientes entonces para cada mes contamos el sumarizado de nuestros datos por ciclo de vida y contamos con la variable target que representa el número de préstamos contratados en cada uno de los ciclos de vida por mes está será la variable a predecir, además se cuenta con 5 variables adicionales que es necesario probar que tengan o no influencia en el pronóstico: gastos promedio, número de productos bancarios promedio, ratios de endeudamiento.
+
+
+### Objetivos
+
+- Construir un modelo que pronostique ,puntualmente y por intervalo, el número de préstamos que serán contratados en los siguientes 3 meses y evaluar su desempeño.
+
+
+- Determinar si existe diferencia significativa en las contrataciones de préstamos por ciclo de vida, es decir, si existe algún o algunos segmentos que tengan mayor influencia en el número de contrataciones totales con el fin de identificar si las estrategias debieran ir dirigidas a ciertos segmentos.
+
+
+### Análisis exploratorio de datos
+
+Las variables presentes en la base de datos son las siguientes:
+
+- __TARGET:__ Número de creditos contratados. Es un entero entre 13 y 150. Esta es nuestra varialbe respuesta y la renombraremos como $y$
+
+- __ID:__ Número de clientes. Es un entero entre 1939 y 8436.
+
+- __FH_REF:__ Fecha de referencia, inicia el 01-08-2016 y finaliza el 01-07-2018. 
+
+- __TP_SEGMENTO_FINAL2:__ Ciclo de vida de los clientes (ADULTO EN PLENITUD, ADULTOS INDEPENDIENTES, DIVORCIADO, HOGARES CON HIJOS, JOVEN PROFESIONAL, JOVEN TRABAJADOR, PAREJA JOVEN, PAREJAS ADULTAS y PAREJAS SENIOR). La renombraremos como $x_1$.
+
+- __TO_PROM_TO_CARGOS_3M:__ Número promedio de cargos en los ultimos 3 meses. Es un número real entre 2.75 y 12.96. La renombraremos como $x_2$.
+
+- __NU_VINC_COGNODATA:__  Número promedio de productos bancarios. Es un número real entre 1.57 y 4.20. La renombraremos como $x_3$.
+
+- __TO_NECESIDAD_FINAN_CAP_3M:__ Cociente del gasto promedio y el saldo. Es un número real entre -1367.4 y 843804.73. La renombraremos como $x_4$.
+
+- __IM_PROM_GASTOS_3M:__ Importe promedio de gastos(compras+cargos recurrentes) en los últimos 3 meses. Es un número real entre 24057.97 y 834859.95. La renombraremos como $x_5$.
+
+- __IM_SUM_SDO_CORTE_1M:__ Importe promedio del saldo de cuenta de cheques. Es un número real entre 828293.4 y 3364972.9. La renombraremos como $x_6$.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(dplyr)
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+camp<-camp %>% mutate(cat=as.numeric(camp$TP_SEGMENTO_FINAL2))
+#camp<-arrange(camp,cat)
+
+```
+
+Es importante destacar que como la variable $x_1$ es una variable categórica tenemos que incorporar la restricción para los sus coeficientes asociados, lo cual se detallará en cada uno de los modelos. 
+
+Por otro lado la variables $x_2, \ldots, x_6$ estan en escalas con distintos órdenes de magnitud, por lo que las escalamos.
+
+
+A continuación se muestra un análisis exploratorio de las variables en el dataset. El objetivo es obtener una perspectiva de que tipo de relaciones hay entre ellas. El primer análisis es de las ventas contra el tiempo, para identificar tendencia o estacionalidad en los datos para los 9 segmentos diferentes que son objeto de análisis.
+
+#### Totales
+
+En la siguiente gráfica se observa el número de contrataciones totales por mes, podemos ver que en agosto de 2016 tenemos el mayor número histórico de contrataciones(más de 600), debido a algunas estrategias comerciales en ese año, por otro lado aunque la estacionalidad no es del todo marcada exactamente por mes si se puede observar por periodos, donde tenemos caídas muy claras en las contrataciones de los últimos meses del año  de octubre a diciembre, muchas veces en este inter la gente tiene más liquidez, al comienzo de año hay un repunte importante sobre todo en Enero ya que normalmente los clientes están gastados y su necesidad financiera crece, del mismo modo en los agostos siempre hay un número importante de contrataciones debido a que en muchos casos hay regresos a clases. 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+tot<-camp %>% group_by(FH_REF)%>%summarise(total=sum(target),ctes=sum(ID))%>%mutate(tasa=(total/ctes))
+ggplot(tot,aes(x=as.Date(FH_REF),y=total)) + geom_line(col="blue") +geom_point()+
+  xlab("Fecha") +
+  ylab("Creditos contratados")+theme_minimal()
+                                        
+```
+
+Ahora observemos del mismo modo las tasas contratación, donde de los últimos meses del año tienen una tasa de contratación menor al 1% y los meses con mayor número de contrataciones superan el 1.2% de tasa de contratación.
+```{r}
+ggplot(tot,aes(x=as.Date(FH_REF),y=tasa)) + geom_line(col="red") +geom_point()+
+  xlab("Fecha") +
+  ylab("Tasa")+theme_minimal()
+```
+
+
+#### Segmentos
+
+Los distintos segmentos con los que contamos y su descripción son los siguientes:
+
+__Joven Trabajador__
+Clientes entre 18 a 34 años,Obreros calificados,Con ingresos de $3,300 a $11,000 mensuales.
+
+__Joven Profesionista__
+Clientes entre 18 a 34 años,Joven cuya profesión requiere una calificación superior para ser desempeñada,Con ingresos superiores a los $3,200 mensuales.
+
+__Pareja Joven__
+Clientes entre 18 a 34 años,Sin hijos y conviven en pareja,Con ingresos superiores a los $5,000 mensuales.
+
+__Hogares con hijos__
+Clientes entre 18 a 65 años,Conviven con sus hijos en el hogar,Con ingresos promedio de $25,000 mensuales.
+
+__Pareja Adulta__
+Clientes entre 35 a 44 años,Sin hijos en el hogar, que conviven en pareja,Con ingresos superiores a los $7,000 mensuales.
+
+__Pareja Senior__
+Clientes entre 45 a 65 años,Sin hijos en el hogar, que conviven en pareja,Con ingresos superiores a los $7,000 mensuales.
+
+__Divorciado__
+Clientes entre 35 a 65 años,Divorciados.
+
+__Adulto Independiente__
+Clientes entre 35 a 65 años,Sin hijos en el hogar,  no conviven en pareja,Con ingresos superiores a  $6,000 mensuales.
+
+__Adulto en Plenitud__
+Clientes mayores a 65 años.
+
+
+De forma similar, en la siguiente gráfica se puede observar la serie de número de créditos contratados por segmento.
+
+En esta gráfica sobresalen los hogares con hijos, aunque en contraste de la tendecia general cabe resaltar que los segmentos de joven profesional y trabajador tuvieran una tendecia creciente constante a partir del 2018 lo que pudiera significar que más jóvenes cumplieron los requisitos para adquirir préstamos.  
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x = as.Date(FH_REF), y = target)) + 
+  geom_line(aes(color = TP_SEGMENTO_FINAL2, 
+                group = TP_SEGMENTO_FINAL2)) + 
+  guides(color = guide_legend(title = "Segmento"))+
+  ylab('Créditos contratados') + 
+  xlab('Fecha') + theme_minimal()
+```
+
+
+Y si  separamos las tendencias: 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp,aes(x=as.Date(FH_REF),y=target)) + geom_line(col="red") +facet_wrap(~TP_SEGMENTO_FINAL2)+
+  xlab("Fecha") +
+  ylab("Creditos contratados")+theme(axis.text.x = element_text(angle=90))
+```
+
+En la gráfica anterior se muestra que el segmento de hogares con hijos  es el que tiene una tendencia más parecida  a la total es decir con más variaciones, entonces podemos pensar que este segmento tiene una influencia importante en las contrataiones con respecto al total por mes, en contraste las parejas jóvenes y los divorciados muestran una tendencia más constante.
+
+Los segmentos con mayor número de contrataciones de forma mensual son Hogares con Hijos y Adultos en plenitud, y los que menos  son Divorciados y jóvenes trabajadores.
+
+Se presenta una gráfica de caja y brazos donde se notan diferencias entre los distintos segmentos, como se había mencionado el segmento de Hogares con hijos es un grupo totalmente separado y el que tiene mayor volumen de contrataciones, al comparar su rango intercuartílico con respecto a los demás, por otro lado se puede observar que desde el segmento de adultos en plenitud hasta jóvenes profesionales al menos el 75% de los meses han sobrepasado las 40 contrataciones y existe un tercer grupo donde el volumen y la distribución de contrataciones mensuales  es el el mas bajo, pareja joven, divorciado y joven trabajador.  
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, target), y=target,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Créditos contratados')
+```
+
+En la figura anterior podemos constatar que los hogares con hijos es el segmento con mayor número de contrataciones promedio mensual y también en la mediana de los meses, después los adultos en plenitud y parejas senior tienen estadísticos similares y al final los Divorciados y jóvenes trabajadores son los segmentos con menor número de contrataciones de manera mensual.
+
+Podemos observar es que estás distribuciones no necesariamente tienen una relación directamente proporcional al número de clientes que tenemos en cada segmento por mes, pero si nos muestra que hay segmentos a los que de forma más recurrente se les otorgan los préstamos, es el caso de los adultos en plenitud que quizás son económicamente más solventes y los hogares con hijos. 
+
+```{r}
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, ID), y=ID,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()+xlab('Segmento')+ylab('Número de Clientes')
+```
+
+En la tabla siguiente se observan los estadísticos puntuales de cada segmento,  en esta tabla se puede confirmar lo explicado en la figuras anteriores de manera puntual, los hogares con hijos es el segmento con mayor número de contrataciones promedio mensual 104, también en la mediana de los meses 101 y tiene la mayor tasa promedio de contrataciones por mes 1.58%, después los adultos en plenitud y parejas senior tienen estadísticos similares entre sí, aunque la tasa de contratación promedio de los primeros es la segunda más baja en promedio y al final los Divorciados y jóvenes trabajadores son los segmentos con menor número de contrataciones de manera mensual y estos últimos también tienen la tasa de contratación promedio mensual más baja .5%.
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+# Tabla resumen
+camp %>% 
+  group_by(TP_SEGMENTO_FINAL2) %>%mutate(tasa=(target/ID))%>%
+  summarise(mediana = median(target),
+            promedio = mean(target),tasa_promedio=mean(tasa)*100)  %>% 
+  ungroup %>% 
+  mutate(TP_SEGMENTO_FINAL2 = fct_reorder(TP_SEGMENTO_FINAL2, promedio)) %>% 
+  arrange(desc(TP_SEGMENTO_FINAL2))
+
+
+```
+
+#### Variables Numéricas
+
+Para realizar una primera exploración a la interacción de las variables, graficamos un correlograma de nuestros datos. Para hacer esto se transformó la variable de fecha a numérica:
+
+```{r}
+library(corrplot)
+campx<-camp
+campx$FH_REF<-as.numeric(campx$FH_REF)
+names(campx) <- c("mes","seg","target","num_ctes","cargos","n_prods","necesidad","gastos","saldo","cat")
+nums <- unlist(lapply(campx, is.numeric))  
+corrplot(cor(campx[,nums]))
+
+```
+
+Podemos observar que las variables más relacionadas con nuestro target o número de contrataciones de créditos son el número de clientes, el número de productos y los gastos, otras correlaciones positivas que podemos ver son entre los cargos y el número de productos de forma positiva así como con los gastos, tambén el número de productos tiene una relación positiva con los saldos de cuenta de cheques, por otro lado vemos una relación negativa entre "cat" que es el segmento númerico que está construído con un valor numérico de forma descendente con respecto a la etapa de vida, es por ello que los saldos y esta variable tienen relación negativa(tienes más liquidez mientras más grande eres).
+El tiempo tiene mayor relación positiva con los cargos y los saldos lo cual suena coherente en el sentido de que los gastos son distintos en el año y por tanto la liquidez también.
+
+Ahora podemos ver las distintas varibles en el tiempo...
+```{r}
+totp<-campx %>% group_by(mes)%>%summarise(total=sum(target),ctes=sum(num_ctes),cargos=mean(cargos),n_prods=mean(n_prods),necesidad=mean(necesidad),gastos=mean(gastos),saldo=mean(saldo))
+#ggplot(tot,aes(x=as.Date(FH_REF))) + geom_line(y=total,col="blue")
+ggplot(totp, aes(x=mes)) + geom_line(aes(y = scale(ctes), colour = "ctes")) + 
+  geom_line(aes(y = scale(cargos,scale = FALSE), colour = "cargos"))+
+  geom_line(aes(y = scale(n_prods), colour = "n_prods"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(necesidad), colour = "necesidad"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(gastos), colour = "gastos"))+
+  geom_line(aes(y = scale(cargos), colour = "cargos"))+
+  geom_line(aes(y = scale(saldo), colour = "saldo"))+ 
+  geom_point(aes(y = scale(total), colour = "contrataciones"))+
+  geom_line(aes(y = scale(total), colour = "contrataciones"))+
+  ylab('Valores')
+  
+  
+  
+```
+En la gráfica anterior se presentan las variables escaladas con el fin de poder observar mejor el efecto y las contrataciones que se ven en en la línea dorada mostrando los puntos a lo largo del tiempo.
+Podemos observar que para estos clientes la tendencia de las variables es creciente, excepto la de necesidad financiera lo cual tiene sentido por la forma en que se construyó, sabemos que las variables con mayor correlación con las contrataciones son el importe promedio de gastos de los últimos 3 meses(gastos) y el número de productos bancarios promedio que poseen los clientes, en ninguno de los casos sus series se ven como las contrataciones.
+
+
+
+### Referencias
+
+Los datos utilizados fueron obtenidos de un Banco  donde a partir de una muestra de 64mil clientes que representan de forma relevante el comportamiento general, con un histórico de de 24 meses agosto2016 a agosto2018 donde se resumen las contrataciones de créditos personales de forma mensual a lo largo de este periodo.
+Es importante mencionar que los datos fueron un poco modificados a petición de la institución para poder compartirlos, pero no modifica la esencia del problema y la solución.
+
+Notas de clase en particular el capítulo 5 que habla de modelos dinámicos ya que nuestro problema tiene que ver con temas temporales
+
+
+Bayesian Data Analysis de Andrew  Gelman, A., Carlin, J. B., Stern, H. S. & Rubin, D. (2002). Bayesian Data Analysis, 2a. edición. Chapman & Hall: Boca Raton. 

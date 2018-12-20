@@ -1,0 +1,34 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dpois(mu[i])
+	mu[i]<-ne[i]*lambda[i]
+	log(lambda[i])<-alpha+gama[x1[i]]
+	}
+	
+
+	
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+
+#Prediction 1
+for (i in 1:n) { 
+  yf1[i] ~ dpois(mu[i]) 
+}
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+

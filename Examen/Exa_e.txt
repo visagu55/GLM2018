@@ -1,0 +1,27 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-beta[1]+beta[2]*x[i]
+	       +a[1]*z2[i]
+	       +a[2]*z3[i]
+               +a[3]*z4[i]
+               +a[4]*z5[i]
+               +a[5]*z6[i] 
+               +a[6]*z7[i]
+               +b[1]*x[i]*z2[i]
+	       +b[2]*x[i]*z3[i]
+	       +b[3]*x[i]*z4[i]
+	       +b[4]*x[i]*z5[i]
+	       +b[5]*x[i]*z6[i]
+	       +b[6]*x[i]*z7[i]      	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+for (j in 1:6) { a[j] ~ dnorm(0,0.001) 
+                 b[j] ~ dnorm(0,0.001) }
+tau ~ dgamma(0.001,0.001)
+#Prediction
+for (i in 1:n) { yf[i] ~ dnorm(mu[i],tau) }
+}

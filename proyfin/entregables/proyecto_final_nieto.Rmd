@@ -1,0 +1,358 @@
+---
+title: "Pronóstico de contrataciones de préstamos bancarios"
+author: "Abraham Nieto 51556, Alejandro Hernández 87806 y Omar Reyes 127131"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(tidyverse)
+library(R2jags)
+library(forcats)
+library(xtable)
+
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+```
+
+### Introducción
+
+Es bien sabido que el otorgamiento de créditos es uno de los negocios más rentables para los bancos, es por ello que estos asignan mucho presupuesto a la generación de campañas para la colocación de estos dirigidas a clientes y no clientes de tal modo que el objetivo, en el primer caso, además de acrecentar el negocio también es incrementar la fidelidad del cliente con el banco y en el segundo caso hablamos de atraer nuevos clientes con ofertas crediticias 
+
+Por supuesto, se cuenta con información de una muestra de 65mil clientes que históricamente han contratado un préstamo personal a lo largo de los últimos 2 años en cada uno de los meses estas contrataciones se han hecho debido a que el cliente ha recibido una oferta del banco o bien de modo proactivo el cliente lo ha solicitado.
+
+Uno de los principales objetivos es crear campañas dirigidas donde esto significa una personalización en el modo de comunicarle la oferta y esto es posible ya que se cuenta con datos como saldos, créditos, productos, movimientos,etc. del cliente, pero antes de llevar a cabo una campaña, en términos de negocio, es trascendental establecer las metas que, como área de colocación de créditos, debemos lograr y para poder establecer estas metas necesitamos conocer  la historia de las colocaciones y además poder conocer el número esperado, de estas en periodos posteriores, de tal modo que este dato se pueda utilizar como referencia de cuales son los posibles escenarios en cuanto a los resultados que se pudiesen obtener desde el punto de vista de los datos con los que se cuentan, entonces utilizando las predicciones del número de créditos que se van a colocar cada mes podemos establecer una meta de colocación de créditos para campañas dirigidas bajo el supuesto de que todos lo clientes cumplen las condiciones para dicho otorgamiento. 
+
+
+### Descripción del problema
+
+Se quiere establecer un proceso mensual que pronostique el número de contrataciones de préstamos personales con el fin de establecer la meta mensual de colocaciones de créditos personales  a través de campañas, para esto se busca construir un modelo que pronostique el número de préstamos colocados  esperado, para ello contamos con 24 meses de historia (Agosto 2016-Agosto 2018) donde tenemos un dataset de 312 registros agrupados por mes y por ciclo de vida(segmento) de nuestros clientes entonces para cada mes contamos el sumarizado de nuestros datos por ciclo de vida y contamos con la variable target que representa el número de préstamos contratados en cada uno de los ciclos de vida por mes está será la variable a predecir, además se cuenta con 5 variables adicionales que es necesario probar que tengan o no influencia en el pronóstico: gastos promedio, número de productos bancarios promedio, ratios de endeudamiento.
+
+
+### Objetivos
+
+- Construir un modelo que pronostique ,puntualmente y por intervalo, el número de préstamos que serán contratados en los siguientes 3 meses y evaluar su desempeño.
+
+
+- Determinar si existe diferencia significativa en las contrataciones de préstamos por ciclo de vida, es decir, si existe algún o algunos segmentos que tengan mayor influencia en el número de contrataciones totales con el fin de identificar si las estrategias debieran ir dirigidas a ciertos segmentos.
+
+
+### Análisis exploratorio de datos
+
+Las variables presentes en la base de datos son las siguientes:
+
+- __TARGET:__ Número de creditos contratados. Es un entero entre 13 y 150. Esta es nuestra varialbe respuesta y la renombraremos como $y$
+
+- __ID:__ Número de clientes. Es un entero entre 1939 y 8436.
+
+- __FH_REF:__ Fecha de referencia, inicia el 01-08-2016 y finaliza el 01-07-2018. 
+
+- __TP_SEGMENTO_FINAL2:__ Ciclo de vida de los clientes (ADULTO EN PLENITUD, ADULTOS INDEPENDIENTES, DIVORCIADO, HOGARES CON HIJOS, JOVEN PROFESIONAL, JOVEN TRABAJADOR, PAREJA JOVEN, PAREJAS ADULTAS y PAREJAS SENIOR). La renombraremos como $x_1$.
+
+- __TO_PROM_TO_CARGOS_3M:__ Número promedio de cargos en los ultimos 3 meses. Es un número real entre 2.75 y 12.96. La renombraremos como $x_2$.
+
+- __NU_VINC_COGNODATA:__  Número promedio de productos bancarios. Es un número real entre 1.57 y 4.20. La renombraremos como $x_3$.
+
+- __TO_NECESIDAD_FINAN_CAP_3M:__ Cociente del gasto promedio y el saldo. Es un número real entre -1367.4 y 843804.73. La renombraremos como $x_4$.
+
+- __IM_PROM_GASTOS_3M:__ Importe promedio de gastos(compras+cargos recurrentes) en los últimos 3 meses. Es un número real entre 24057.97 y 834859.95. La renombraremos como $x_5$.
+
+- __IM_SUM_SDO_CORTE_1M:__ Importe promedio del saldo de cuenta de cheques. Es un número real entre 828293.4 y 3364972.9. La renombraremos como $x_6$.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+library(dplyr)
+camp<-read.csv('segt-1.csv',header=TRUE,sep=",")
+camp<-select(camp,-X)
+
+```
+
+Es importante destacar que como la variable $x_1$ es una variable categórica tenemos que incorporar la restricción para los sus coeficientes asociados, lo cual se detallará en cada uno de los modelos. 
+
+Por otro lado la variables $x_2, \ldots, x_6$ estan en escalas con distintos órdenes de magnitud, por lo que las escalamos.
+
+
+A continuación se muestra un análisis exploratorio de las variables en el dataset. El objetivo es obtener una perspectiva de que tipo de relaciones hay entre ellas. El primer análisis es de las ventas contra el tiempo, para identificar tendencia o estacionalidad en los datos para los 9 segmentos diferentes que son objeto de análisis.
+
+#### Totales
+
+En la siguiente gráfica se observa el número de contrataciones totales por mes, pareciera que a partir de 2018 hay un crecimiento en las contrataciones de créditos donde  a partir de febrero se llegan a más de 550 créditos, y  al ver la serie histórica los picos más altos de 2017  llegan a 535 pero esto sólo se da en  agosto.
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+tot<-camp %>% group_by(FH_REF)%>%summarise(total=sum(target))
+ggplot(tot,aes(x=as.Date(FH_REF),y=total)) + geom_line(col="blue") +
+  xlab("Fecha") +
+  ylab("Préstamos adquiridos")
+```
+
+#### Segmentos
+
+Los distintos segmentos con los que contamos y su descripción son los siguientes:
+
+__Joven Trabajador__
+Clientes entre 18 a 34 años,Obreros calificados,Con ingresos de $3,300 a $11,000 mensuales.
+
+__Joven Profesionista__
+Clientes entre 18 a 34 años,Joven cuya profesión requiere una calificación superior para ser desempeñada,Con ingresos superiores a los $3,200 mensuales.
+
+__Pareja Joven__
+Clientes entre 18 a 34 años,Sin hijos y conviven en pareja,Con ingresos superiores a los $5,000 mensuales.
+
+__Hogares con hijos__
+Clientes entre 18 a 65 años,Conviven con sus hijos en el hogar,Con ingresos promedio de $25,000 mensuales.
+
+__Pareja Adulta__
+Clientes entre 35 a 44 años,Sin hijos en el hogar, que conviven en pareja,Con ingresos superiores a los $7,000 mensuales.
+
+__Pareja Senior__
+Clientes entre 45 a 65 años,Sin hijos en el hogar, que conviven en pareja,Con ingresos superiores a los $7,000 mensuales.
+
+__Divorciado__
+Clientes entre 35 a 65 años,Divorciados.
+
+__Adulto Independiente__
+Clientes entre 35 a 65 años,Sin hijos en el hogar,  no conviven en pareja,Con ingresos superiores a  $6,000 mensuales.
+
+__Adulto en Plenitud__
+Clientes mayores a 65 años.
+
+
+De forma similar, en la siguiente gráfica se puede observar la serie de número de créditos contratados por segmento.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x = as.Date(FH_REF), y = target)) + 
+  geom_line(aes(color = TP_SEGMENTO_FINAL2, 
+                group = TP_SEGMENTO_FINAL2), size = 1) +
+  guides(color = guide_legend(title = "Segmento")) +
+   xlab("Fecha") +
+  ylab("Préstamos adquiridos")
+```
+
+
+Y si  separamos las tendencias: 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp,aes(x=as.Date(FH_REF),y=target)) + geom_line(col="red") +facet_wrap(~TP_SEGMENTO_FINAL2)+
+  xlab("Fecha") +
+  ylab("Creditos colocados")
+```
+
+En la gráfica anterior se muestra que el segmento de hogares con hijos  es el que tiene una tendencia más parecida  a la total es decir con más variaciones en contraste las parejas jóvenes y los divorciados muestran una tendencia más constante.
+
+Los segmentos con mayor número de contrataciones de forma mensual son Hogares con Hijos y Adultos en plenitud, y los que menos  son Divorciados y jóvenes trabajadores.
+
+Se presenta una gráfica de caja y brazos donde se notan diferencias entre los distintos segmentos, como se había mencionado el segmento de Hogares con hijos es un grupo totalmente separado y el que tiene mayor volumen de contrataciones, al comparar su rango intercuartílico con respecto a los demás, por otro lado se puede observar que desde el segmento de adultos en plenitud hasta jóvenes profesionales al menos el 75% de los meses han sobrepasado las 40 contrataciones y existe un tercer grupo donde el volumen y la distribución de contrataciones mensuales  es el el mas bajo, pareja joven, divorciado y joven trabajador.  
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+ggplot(camp, aes(x=fct_reorder(TP_SEGMENTO_FINAL2, IM_PROM_GASTOS_3M/TO_PROM_TO_CARGOS_3M), y=IM_PROM_GASTOS_3M/TO_PROM_TO_CARGOS_3M,fill=TP_SEGMENTO_FINAL2)) + 
+  geom_boxplot() + coord_flip()
+```
+
+En la tabla siguiente se observan los estadísticos puntuales de cada segmento,  en esta tabla se puede confirmar lo explicado en la figuras anteriores de manera puntual, los hogares con hijos es el segmento con mayor número de contrataciones promedio mensual 104, también en la mediana de los meses 101 y tiene la mayor tasa promedio de contrataciones por mes 1.58%, después los adultos en plenitud y parejas senior tienen estadísticos similares entre sí, aunque la tasa de contratación promedio de los primeros es la segunda más baja en promedio y al final los Divorciados y jóvenes trabajadores son los segmentos con menor número de contrataciones de manera mensual y estos últimos también tienen la tasa de contratación promedio mensual más baja .5%.
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+# Tabla resumen
+camp %>% 
+  group_by(TP_SEGMENTO_FINAL2) %>%mutate(tasa=(target/ID))%>%
+  summarise(mediana = median(target),
+            promedio = mean(target),tasa_promedio=mean(tasa)*100)  %>% 
+  ungroup %>% 
+  mutate(TP_SEGMENTO_FINAL2 = fct_reorder(TP_SEGMENTO_FINAL2, promedio)) %>% 
+  arrange(desc(TP_SEGMENTO_FINAL2))
+
+
+```
+
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+y<-as.numeric(camp$target)
+x1<-as.numeric(camp$TP_SEGMENTO_FINAL2)
+x2<-as.numeric(scale(camp$TO_PROM_TO_CARGOS_3M))
+x3<-as.numeric(scale(camp$NU_VINC_COGNODATA))
+x4<-as.numeric(scale(camp$TO_NECESIDAD_FINAN_CAP_3M))
+x5<-as.numeric(scale(camp$IM_PROM_GASTOS_3M))
+x6<-as.numeric(scale(camp$IM_SUM_SDO_CORTE_1M))
+
+```
+
+## Modelos Estáticos
+
+### Modelo lineal normal 
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+n<-dim(camp)[1]
+
+data<-list("n"=n,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,tau=1,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+est_reg_nor<-jags(data,inits,parameters,model.file="estatico_regresion_normal.txt",
+                n.iter=10000,n.chains=2,n.burnin=1000,n.thin=1)
+
+```
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out<-est_reg_nor$BUGSoutput$sims.list
+out.sum<-est_reg_nor$BUGSoutput$summary
+
+#Predictions
+out.yf<-out.sum[grep("yf1",rownames(out.sum)),]
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+base_graf<-as.data.frame(cbind(camp,out.yf[,1])) %>% mutate(pred=out.yf[,1]) 
+ggplot(base_graf)+geom_point(aes(target,pred,color=TP_SEGMENTO_FINAL2))
+
+
+#t vs. y
+x<-c(1:n)
+par(mfrow=c(1,1))
+plot(x,y,type="p",col="grey50",ylim=c(ymin,ymax))
+points(x,out.yf[,1],col=2,pch=16,cex=0.5)
+segments(x,out.yf[,3],x,out.yf[,7],col=2)
+par(mfrow=c(1,1))
+plot(x,y,type="l",col="grey50",ylim=c(ymin,ymax))
+lines(x,out.yf[,1],col=2,cex=0.5)
+lines(x,out.yf[,3],col=2,lty=2)
+lines(x,out.yf[,7],col=2,lty=2)
+
+
+```
+
+DIC:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+dic_lin<-est_reg_nor$BUGSoutput$DIC
+dic_lin
+```
+
+Pseudo-$R^2$:
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+r2_lin<-cor(y,out.yf[,1])^2
+r2_lin
+```
+
+
+### Modelo lineal generalizado poisson con liga log
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+est_glm_poi<-jags(data,inits,parameters,model.file="estatico_glm_poisson.txt",
+                n.iter=10000,n.chains=2,n.burnin=1000,n.thin=1)
+
+```
+
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out<-est_glm_poi$BUGSoutput$sims.list
+out.sum<-est_glm_poi$BUGSoutput$summary
+
+#Predictions
+out.yf<-out.sum[grep("yf1",rownames(out.sum)),]
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+base_graf<-as.data.frame(cbind(camp,out.yf[,1])) %>% mutate(pred=out.yf[,1]) 
+ggplot(base_graf)+geom_point(aes(target,pred,color=TP_SEGMENTO_FINAL2))
+
+
+#t vs. y
+x<-c(1:n)
+par(mfrow=c(1,1))
+plot(x,y,type="p",col="grey50",ylim=c(ymin,ymax))
+points(x,out.yf[,1],col=2,pch=16,cex=0.5)
+segments(x,out.yf[,3],x,out.yf[,7],col=2)
+par(mfrow=c(1,1))
+plot(x,y,type="l",col="grey50",ylim=c(ymin,ymax))
+lines(x,out.yf[,1],col=2,cex=0.5)
+lines(x,out.yf[,3],col=2,lty=2)
+lines(x,out.yf[,7],col=2,lty=2)
+
+```
+
+
+
+DIC:
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+dic_glm_poi<-est_glm_poi$BUGSoutput$DIC
+dic_glm_poi
+```
+
+Pseudo-$R^2$:
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+r2_glm_poi<-cor(y,out.yf[,1])^2
+r2_glm_poi
+```
+
+### Modelo lineal generalizado binomial con liga logística
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE,results="hide",promp=FALSE}
+n<-dim(camp)[1]
+
+data<-list("n"=n,"ne"=camp$ID,"y"=y,"x1"=x1,"x2"=x2,"x3"=x3,"x4"=x4,"x5"=x5,"x6"=x6)
+
+inits<-function(){list(alpha=0,gama=rep(0,9),beta=rep(0,5),yf1=rep(1,n))}
+
+parameters<-c("alpha.adj","gama.adj","beta","mu","yf1")
+
+est_glm_bin<-jags(data,inits,parameters,model.file="estatico_glm_binomial.txt",
+                n.iter=10000,n.chains=2,n.burnin=1000,n.thin=1)
+
+```
+
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+
+out<-est_glm_bin$BUGSoutput$sims.list
+out.sum<-est_glm_bin$BUGSoutput$summary
+
+#Predictions
+out.yf<-out.sum[grep("yf1",rownames(out.sum)),]
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+base_graf<-as.data.frame(cbind(camp,out.yf[,1])) %>% mutate(pred=out.yf[,1]) 
+ggplot(base_graf)+geom_point(aes(target,pred,color=TP_SEGMENTO_FINAL2))
+
+
+#t vs. y
+x<-c(1:n)
+par(mfrow=c(1,1))
+plot(x,y,type="p",col="grey50",ylim=c(ymin,ymax))
+points(x,out.yf[,1],col=2,pch=16,cex=0.5)
+segments(x,out.yf[,3],x,out.yf[,7],col=2)
+par(mfrow=c(1,1))
+plot(x,y,type="l",col="grey50",ylim=c(ymin,ymax))
+lines(x,out.yf[,1],col=2,cex=0.5)
+lines(x,out.yf[,3],col=2,lty=2)
+lines(x,out.yf[,7],col=2,lty=2)
+
+
+```
+
+DIC:
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+dic_glm_bin<-est_glm_bin$BUGSoutput$DIC
+dic_glm_bin
+```
+
+Pseudo-$R^2$:
+```{r,message=FALSE,warning=FALSE,echo=FALSE}
+r2_glm_bin<-cor(y,out.yf[,1])^2
+r2_glm_bin
+```

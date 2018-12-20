@@ -1,0 +1,228 @@
+---
+title: "tarea_ex"
+author: "Abraham Nieto 51556"
+date: "4 de noviembre de 2018"
+output: html_document
+---
+```{r}
+library(R2OpenBUGS)
+library(R2jags)
+
+wdir<-"/home/abraham/RA2018/tareas/tar_bill"
+setwd(wdir)
+
+#--- Funciones utiles ---
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+```
+```{r}
+#Leemos datos
+bill<-read.table("BillsMXc.csv",sep=",",header=TRUE)
+head(bill)
+x<-bill$C#/1000
+y<-bill$Y#/1000
+```
+
+Realizamos el mismo eercicio que el examen con las betas optimas con la liga logistica  y tenemos:
+
+```{r}
+n<-nrow(bill)
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"y"=y,"e"=bill$C,"x20"=bill$x20,"x50"=bill$x50,"x100"=bill$x100,"x200"=bill$x200,"x500"=bill$x500)
+#-Defining inits-
+inits<-function(){list(beta=rep(0,6),yf=rep(0,n))}
+parameters<-c("beta","yf")
+
+#OpenBUGS
+ex1<-bugs(data,inits,parameters,model.file="eja.txt",
+               n.iter=100000,n.chains=2,n.burnin=10000)
+
+```
+
+```{r}
+res<-function(func,out){
+  ex1.sim<-func
+  #out<-ex1.sim$sims.list
+  
+
+ for(i in 1:6){   
+  b<-out$beta[,i]
+  par(mfrow=c(1,1))
+  plot(b,type="l",xlab = "beta")
+  plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+  hist(b,freq=FALSE, main = "beta")
+  acf(b)
+ }
+  plot(out$beta)
+  
+  #out.sum<-ex1.sim$summary
+  #return(ex1.sim)
+  
+}
+
+rex<-function(fun){return(fun)}
+
+```
+
+Tenemos las nuevas betas y el DIC da 1297 con liga logistica...
+
+```{r}
+out<-rex(ex1)$sims.list
+
+out.sum<-rex(ex1)$summary 
+
+#Predictions
+adj<-function(out.sum,y,a){
+  out.yf<-out.sum[grep(a,rownames(out.sum)),]
+  or<-order(x)
+  ymin<-min(y,out.yf[,c(1,3,7)])
+  ymax<-max(y,out.yf[,c(1,3,7)])
+  par(mfrow=c(1,1))
+  plot(x,y,ylim=c(ymin,ymax))
+  lines(x[or],out.yf[or,1],lwd=2,col=2)
+  lines(x[or],out.yf[or,3],lty=2,col=2)
+  lines(x[or],out.yf[or,7],lty=2,col=2)
+  
+  plot(out.yf[1:n,1],y,type ="p")
+  
+}
+
+adj(out.sum,y,"yf")
+
+#DIC
+met<-function(ex1.sim,out.sum){
+  out.dic<-ex1.sim$DIC
+  #out.dic<-ej4.sim$BUGSoutput$DIC
+  print(out.dic)
+  print(out.sum)
+}
+
+#out.sum[grep("beta",rownames(out.sum)),c(1,3,7)] 
+met(ex1,out.sum[grep("beta",rownames(out.sum)),c(1,3,7)] )
+
+r2<-function(y,out.sum,a){
+  out.yf<-out.sum[grep(a,rownames(out.sum)),]  
+  R2<-(cor(y,out.yf[1:n,1]))^2
+  print(R2)
+}
+
+r2(y,out.sum,"yf")
+```
+
+Aqui todos los coeficientes excepto el de 500 son significativos el DIC 1297 y r2=.554
+
+
+y Ahora con Clog-log:
+```{r}
+parameters<-c("beta","yf")
+#OpenBUGS
+ex2<-bugs(data,inits,parameters,model.file="eje.txt",
+          n.iter=100000,n.chains=2,n.burnin=10000)
+#traceplot(ex2)
+
+```
+
+
+```{r}
+
+out2<-rex(ex2)$sims.list
+
+out2.sum<-rex(ex2)$summary
+
+
+#res(ex2,out2)
+#ajustes
+adj(out2.sum,y,"yf")
+#estimaciones y DIC
+met(ex2,out2.sum[grep("beta",rownames(out2.sum)),c(1,3,7)])
+#R2
+r2(y,out2.sum,"yf")
+
+
+```
+
+con funcion cloglog obtnemos el dic de 1297 y una r2 de .553
+
+por tanto escogemos como el mejor modelo al de la liga logistica ya que su r2 es mayor.
+
+
+ejea.txt
+***************************************************************************************
+
+model{
+#Likelihood
+
+for (i in 1:n){
+
+y[i]~dbin(pi[i],e[i])
+
+logit(pi[i])<-b[1]+b[2]*x20[i]+b[3]*x50[i]+b[4]*x100[i]+b[5]*x200[i]+b[6]*x500[i]
+
+
+}
+
+
+
+
+#Priors
+
+for (j in 1:6){
+
+b[j]~dnorm(0,0.001)
+
+}
+
+#estimate betas
+
+beta[1]<-b[1]+mean(b[2:6])
+for(j in 2:6){beta[j]<-b[j]-mean(b[2:6])}
+
+
+for (i in 1:n) { yf[i] ~ dbin(pf[i],e[i]) logit(pf[i])<-beta[1]+beta[2]*x20[i]+beta[3]*x50[i]+beta[4]*x100[i]+beta[5]*x200[i]+beta[6]*x500[i]}
+
+
+}
+
+************************************************************************************************
+
+
+eje.txt
+********************************************************************************
+model{
+#Likelihood
+
+for (i in 1:n){
+
+y[i]~dbin(pi[i],e[i])
+
+cloglog(pi[i])<-b[1]+b[2]*x20[i]+b[3]*x50[i]+b[4]*x100[i]+b[5]*x200[i]+b[6]*x500[i]
+
+
+}
+
+
+
+
+#Priors
+
+for (j in 1:6){
+
+b[j]~dnorm(0,0.001)
+
+}
+
+#estimate betas
+
+beta[1]<-b[1]+mean(b[2:6])
+for(j in 2:6){beta[j]<-b[j]-mean(b[2:6])}
+
+
+for (i in 1:n) { yf[i] ~ dbin(pf[i],e[i]) logit(pf[i])<-beta[1]+beta[2]*x20[i]+beta[3]*x50[i]+beta[4]*x100[i]+beta[5]*x200[i]+beta[6]*x500[i]}
+
+
+}
+*********************************************************************************************
+

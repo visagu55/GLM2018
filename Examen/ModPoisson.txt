@@ -1,0 +1,48 @@
+#####Modelo Poisson
+#x=0,1,....,n
+#n=numero de expuestos
+#p=probabilildad de ocurrencia
+#E(x)=lambda 
+#V(x)=lambda
+#Recordar que mu=lambda
+#####################
+####Ligas para el modelo Poisson
+#Liga logaritmica
+#log(mu)=x*beta entonces mu=exp(x*beta) 
+
+#Liga de logaritmo base 2
+#log2(mu)=x*beta entonces mu=2^(x*beta)
+
+
+
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dpois(mu[i])
+	mu[i]<-ne[i]*lambda[i]
+  #log(lambda[i])<-beta[1]+beta[2]*x[i]
+  eta[i]<-beta[1]+beta[2]*x[i]
+	lambda[i]<-pow(2,eta[i])
+	}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+#Prediction 1
+for (i in 1:n) { yf1[i] ~ dpois(mu[i]) }
+#Prediction 2
+#for (i in 1:m) { 
+#	yf2[i] ~ dpois(muf[i]) 
+#	muf[i]<-nef[i]*lambdaf[i]
+#	log(lambdaf[i])<-beta[1]+beta[2]*xf[i]
+#}
+	#yf2 ~ dpois(muf) 
+	#muf<-nef*lambdaf
+	#log(lambdaf)<-beta[1]+beta[2]*xf
+
+	yf2 ~ dpois(muf) 
+	muf<-nef*lambdaf
+	etaf<-beta[1]+beta[2]*xf
+	lambdaf<-pow(2,etaf)
+	
+}

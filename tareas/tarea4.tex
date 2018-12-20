@@ -1,0 +1,392 @@
+\documentclass[]{article}
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\hypersetup{unicode=true,
+            pdftitle={Ejercicio 4},
+            pdfauthor={Abraham Nieto 51556},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.77,0.63,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+% Redefines (sub)paragraphs to behave more like sections
+\ifx\paragraph\undefined\else
+\let\oldparagraph\paragraph
+\renewcommand{\paragraph}[1]{\oldparagraph{#1}\mbox{}}
+\fi
+\ifx\subparagraph\undefined\else
+\let\oldsubparagraph\subparagraph
+\renewcommand{\subparagraph}[1]{\oldsubparagraph{#1}\mbox{}}
+\fi
+
+%%% Use protect on footnotes to avoid problems with footnotes in titles
+\let\rmarkdownfootnote\footnote%
+\def\footnote{\protect\rmarkdownfootnote}
+
+%%% Change title format to be more compact
+\usepackage{titling}
+
+% Create subtitle command for use in maketitle
+\newcommand{\subtitle}[1]{
+  \posttitle{
+    \begin{center}\large#1\end{center}
+    }
+}
+
+\setlength{\droptitle}{-2em}
+
+  \title{Ejercicio 4}
+    \pretitle{\vspace{\droptitle}\centering\huge}
+  \posttitle{\par}
+    \author{Abraham Nieto 51556}
+    \preauthor{\centering\large\emph}
+  \postauthor{\par}
+      \predate{\centering\large\emph}
+  \postdate{\par}
+    \date{26 de septiembre de 2018}
+
+
+\begin{document}
+\maketitle
+
+EJERCICIO 4. Un investigador desea evaluar la relación entre el salario
+anual de trabajadores de una compañía de nivel medio y alto (Y, en miles
+de dólares) y el índice de calidad de trabajo (X1), número de años de
+experiencia (X2) y el índice de éxito en publicaciones (X3). La muestra
+consiste de 24 trabajadores. Realiza un análisis Bayesiano completo de
+los datos y obtén las predicciones de salarios para 3 nuevos empleados
+con variables explicativas: x1F `   5.4,17,6.0 , x' 6.2,12,5.8 2F 
+y x ' 6.4,21,6.1 1F  .
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{library}\NormalTok{(R2OpenBUGS)}
+\KeywordTok{library}\NormalTok{(R2jags)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Loading required package: rjags
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: coda
+\end{verbatim}
+
+\begin{verbatim}
+## Linked to JAGS 4.2.0
+\end{verbatim}
+
+\begin{verbatim}
+## Loaded modules: basemod,bugs
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'R2jags'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:coda':
+## 
+##     traceplot
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{wdir<-}\StringTok{"/home/abraham/RA2018/tareas"}
+\KeywordTok{setwd}\NormalTok{(wdir)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#--- Funciones utiles ---}
+\NormalTok{prob<-}\ControlFlowTok{function}\NormalTok{(x)\{}
+\NormalTok{  out<-}\KeywordTok{min}\NormalTok{(}\KeywordTok{length}\NormalTok{(x[x}\OperatorTok{>}\DecValTok{0}\NormalTok{])}\OperatorTok{/}\KeywordTok{length}\NormalTok{(x),}\KeywordTok{length}\NormalTok{(x[x}\OperatorTok{<}\DecValTok{0}\NormalTok{])}\OperatorTok{/}\KeywordTok{length}\NormalTok{(x))}
+\NormalTok{  out}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{sal<-}\KeywordTok{read.table}\NormalTok{(}\StringTok{"http://allman.rhon.itam.mx/~lnieto/index_archivos/salarios.txt"}\NormalTok{,}\DataTypeTok{header=}\OtherTok{TRUE}\NormalTok{)}
+\KeywordTok{head}\NormalTok{(sal)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##      Y  X1 X2  X3
+## 1 33.2 3.5  9 6.1
+## 2 40.3 5.3 20 6.4
+## 3 38.7 5.1 18 7.4
+## 4 46.8 5.8 33 6.7
+## 5 41.4 4.2 31 7.5
+## 6 37.5 6.0 13 5.9
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{n<-}\KeywordTok{nrow}\NormalTok{(sal)}
+\NormalTok{x1f<-}\KeywordTok{c}\NormalTok{(}\FloatTok{5.4}\NormalTok{,}\DecValTok{17}\NormalTok{,}\FloatTok{6.0}\NormalTok{)}
+\NormalTok{x2f<-}\KeywordTok{c}\NormalTok{(}\FloatTok{6.2}\NormalTok{,}\DecValTok{12}\NormalTok{,}\FloatTok{5.8}\NormalTok{)}
+\NormalTok{x3f<-}\KeywordTok{c}\NormalTok{(}\FloatTok{6.4}\NormalTok{,}\DecValTok{21}\NormalTok{,}\FloatTok{6.1}\NormalTok{)}
+
+\NormalTok{m<-}\KeywordTok{length}\NormalTok{(x1f)}
+\CommentTok{#-Defining data-}
+\CommentTok{#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)}
+\NormalTok{data<-}\KeywordTok{list}\NormalTok{(}\StringTok{"n"}\NormalTok{=n,}\StringTok{"y"}\NormalTok{=sal}\OperatorTok{$}\NormalTok{Y,}\StringTok{"x1"}\NormalTok{=sal}\OperatorTok{$}\NormalTok{X1,}\StringTok{"x2"}\NormalTok{=sal}\OperatorTok{$}\NormalTok{X2,}\StringTok{"x3"}\NormalTok{=sal}\OperatorTok{$}\NormalTok{X3,}\StringTok{"m"}\NormalTok{=m,}\StringTok{"x1f"}\NormalTok{=x1f,}\StringTok{"x2f"}\NormalTok{=x2f,}\StringTok{"x3f"}\NormalTok{=x3f)}
+\CommentTok{#-Defining inits-}
+\NormalTok{inits<-}\ControlFlowTok{function}\NormalTok{()\{}\KeywordTok{list}\NormalTok{(}\DataTypeTok{beta=}\KeywordTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{4}\NormalTok{),}\DataTypeTok{tau=}\DecValTok{1}\NormalTok{,}\DataTypeTok{yf=}\KeywordTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{,n),}\DataTypeTok{yf1=}\KeywordTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{3}\NormalTok{))\} }
+\CommentTok{#-Selecting parameters to monitor-}
+\NormalTok{parameters<-}\KeywordTok{c}\NormalTok{(}\StringTok{"beta"}\NormalTok{,}\StringTok{"tau"}\NormalTok{,}\StringTok{"sig2"}\NormalTok{,}\StringTok{"yf"}\NormalTok{,}\StringTok{"yf1"}\NormalTok{)}
+\CommentTok{#OpenBUGS}
+\NormalTok{ej4.sim<-}\KeywordTok{bugs}\NormalTok{(data,inits,parameters,}\DataTypeTok{model.file=}\StringTok{"Ej4t.txt"}\NormalTok{,}
+              \DataTypeTok{n.iter=}\DecValTok{5000}\NormalTok{,}\DataTypeTok{n.chains=}\DecValTok{1}\NormalTok{,}\DataTypeTok{n.burnin=}\DecValTok{500}\NormalTok{,}\DataTypeTok{n.thin =} \DecValTok{1}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{out<-ej4.sim}\OperatorTok{$}\NormalTok{sims.list}
+\CommentTok{#Analisis de betas}
+\NormalTok{betas<-}\ControlFlowTok{function}\NormalTok{(p,pos)\{}
+
+\NormalTok{b<-out}\OperatorTok{$}\NormalTok{beta[,pos]}
+\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow=}\KeywordTok{c}\NormalTok{(}\DecValTok{2}\NormalTok{,}\DecValTok{2}\NormalTok{))}
+\KeywordTok{plot}\NormalTok{(b,}\DataTypeTok{type=}\StringTok{"l"}\NormalTok{,}\DataTypeTok{xlab =}\NormalTok{ p)}
+\KeywordTok{plot}\NormalTok{(}\KeywordTok{cumsum}\NormalTok{(b)}\OperatorTok{/}\NormalTok{(}\DecValTok{1}\OperatorTok{:}\KeywordTok{length}\NormalTok{(b)),}\DataTypeTok{type=}\StringTok{"l"}\NormalTok{,}\DataTypeTok{xlab =}\NormalTok{ p)}
+\KeywordTok{hist}\NormalTok{(b,}\DataTypeTok{freq=}\OtherTok{FALSE}\NormalTok{, }\DataTypeTok{main =}\NormalTok{ p)}
+\KeywordTok{acf}\NormalTok{(b)}
+\NormalTok{\}}
+
+\KeywordTok{betas}\NormalTok{(}\StringTok{"b0"}\NormalTok{,}\DecValTok{1}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-5-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{betas}\NormalTok{(}\StringTok{"b1"}\NormalTok{,}\DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-5-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{betas}\NormalTok{(}\StringTok{"b2"}\NormalTok{,}\DecValTok{3}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-5-3.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{betas}\NormalTok{(}\StringTok{"b3"}\NormalTok{,}\DecValTok{4}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-5-4.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{z<-out}\OperatorTok{$}\NormalTok{beta}
+\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow=}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{))}
+\KeywordTok{plot}\NormalTok{(z)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-6-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{pairs}\NormalTok{(z)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-6-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#Resumen (estimadores)}
+\CommentTok{#OpenBUGS}
+\NormalTok{out.sum<-ej4.sim}\OperatorTok{$}\NormalTok{summary}
+\CommentTok{#Tabla resumen}
+\NormalTok{out.sum.t<-out.sum[}\KeywordTok{grep}\NormalTok{(}\StringTok{"beta"}\NormalTok{,}\KeywordTok{rownames}\NormalTok{(out.sum)),}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{7}\NormalTok{)]}
+\NormalTok{out.sum.t<-}\KeywordTok{cbind}\NormalTok{(out.sum.t,}\KeywordTok{apply}\NormalTok{(out}\OperatorTok{$}\NormalTok{beta,}\DecValTok{2}\NormalTok{,prob))}
+\KeywordTok{dimnames}\NormalTok{(out.sum.t)[[}\DecValTok{2}\NormalTok{]][}\DecValTok{4}\NormalTok{]<-}\StringTok{"prob"}
+\KeywordTok{print}\NormalTok{(out.sum.t)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##              mean       2.5%     97.5%         prob
+## beta[1] 17.877896 13.5400000 21.725249 0.0000000000
+## beta[2]  1.135887  0.4633950  1.787525 0.0002222222
+## beta[3]  0.323726  0.2528475  0.396600 0.0000000000
+## beta[4]  1.244461  0.5955475  1.849525 0.0006666667
+\end{verbatim}
+
+Al igual que lo muestran los histogramas de cada \(\beta\) vemos que
+cada una es significativamente distinta de cero ya que su intervalo de
+confianza al 95\% no contiene al cero.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#Predictions}
+\NormalTok{out.yf<-out.sum[}\KeywordTok{grep}\NormalTok{(}\StringTok{"yf"}\NormalTok{,}\KeywordTok{rownames}\NormalTok{(out.sum)),]}
+\NormalTok{or<-}\KeywordTok{order}\NormalTok{(sal}\OperatorTok{$}\NormalTok{X1)}
+\NormalTok{ymin<-}\KeywordTok{min}\NormalTok{(sal}\OperatorTok{$}\NormalTok{Y,out.yf[,}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{7}\NormalTok{)])}
+\NormalTok{ymax<-}\KeywordTok{max}\NormalTok{(sal}\OperatorTok{$}\NormalTok{Y,out.yf[,}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{7}\NormalTok{)])}
+\KeywordTok{par}\NormalTok{(}\DataTypeTok{mfrow=}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{1}\NormalTok{))}
+\KeywordTok{plot}\NormalTok{(sal}\OperatorTok{$}\NormalTok{X1,sal}\OperatorTok{$}\NormalTok{Y,}\DataTypeTok{ylim=}\KeywordTok{c}\NormalTok{(ymin,ymax))}
+\KeywordTok{lines}\NormalTok{(sal}\OperatorTok{$}\NormalTok{X1[or],out.yf[or,}\DecValTok{1}\NormalTok{],}\DataTypeTok{lwd=}\DecValTok{2}\NormalTok{,}\DataTypeTok{col=}\DecValTok{2}\NormalTok{)}
+\KeywordTok{lines}\NormalTok{(sal}\OperatorTok{$}\NormalTok{X1[or],out.yf[or,}\DecValTok{3}\NormalTok{],}\DataTypeTok{lty=}\DecValTok{2}\NormalTok{,}\DataTypeTok{col=}\DecValTok{2}\NormalTok{)}
+\KeywordTok{lines}\NormalTok{(sal}\OperatorTok{$}\NormalTok{X1[or],out.yf[or,}\DecValTok{7}\NormalTok{],}\DataTypeTok{lty=}\DecValTok{2}\NormalTok{,}\DataTypeTok{col=}\DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-8-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{plot}\NormalTok{(out.yf[}\DecValTok{1}\OperatorTok{:}\DecValTok{24}\NormalTok{,}\DecValTok{1}\NormalTok{],sal}\OperatorTok{$}\NormalTok{Y,}\DataTypeTok{type =} \StringTok{"p"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{tarea4_files/figure-latex/unnamed-chunk-8-2.pdf}
+
+Gráficamente se muestra un buen ajuste del modelo.
+
+Futuros\ldots{}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#Tabla resumen}
+\NormalTok{out.sum.f<-out.sum[}\KeywordTok{grep}\NormalTok{(}\StringTok{"yf1"}\NormalTok{,}\KeywordTok{rownames}\NormalTok{(out.sum)),}\KeywordTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{7}\NormalTok{)]}
+\NormalTok{out.sum.f<-}\KeywordTok{cbind}\NormalTok{(out.sum.f,}\KeywordTok{apply}\NormalTok{(out}\OperatorTok{$}\NormalTok{yf1,}\DecValTok{2}\NormalTok{,prob))}
+\KeywordTok{dimnames}\NormalTok{(out.sum.f)[[}\DecValTok{2}\NormalTok{]][}\DecValTok{4}\NormalTok{]<-}\StringTok{"prob"}
+\KeywordTok{print}\NormalTok{(out.sum.f)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##            mean     2.5%    97.5% prob
+## yf1[1] 33.95618 29.97899 38.02000    0
+## yf1[2] 67.20652 56.01849 78.41000    0
+## yf1[3] 34.11680 30.07475 38.06525    0
+\end{verbatim}
+
+Dic usando beta{[}j{]} \textasciitilde{} dnorm(0,0.001) mejor ajuste
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{#DIC}
+
+\NormalTok{out.dic<-ej4.sim}\OperatorTok{$}\NormalTok{DIC}
+\CommentTok{#out.dic<-ej4.sim$BUGSoutput$DIC}
+\KeywordTok{print}\NormalTok{(out.dic)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 101.4
+\end{verbatim}
+
+\(R^2\)
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{R2<-(}\KeywordTok{cor}\NormalTok{(sal}\OperatorTok{$}\NormalTok{Y,out.yf[}\DecValTok{1}\OperatorTok{:}\DecValTok{24}\NormalTok{,}\DecValTok{1}\NormalTok{]))}\OperatorTok{^}\DecValTok{2}
+\KeywordTok{print}\NormalTok{(R2)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.9107619
+\end{verbatim}
+
+
+\end{document}

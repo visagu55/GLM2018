@@ -1,0 +1,49 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dpois(mu[i])
+	mu[i]<-ne[i]*lambda[i]
+	log(lambda[i])<-alpha+gama[x1[i]]+beta1[i]*x2[i]+beta2[i]*x3[i]+beta3[i]*x4[i]+beta4[i]*x5[i]+beta5[i]*x6[i]
+	}
+	
+for (s in (10):n) {
+  beta1[s] ~ ddexp(beta1[s-9], tau)
+  beta2[s] ~ ddexp(beta2[s-9], tau)
+  beta3[s] ~ ddexp(beta3[s-9], tau)
+  beta4[s] ~ ddexp(beta4[s-9], tau)
+  beta5[s] ~ ddexp(beta5[s-9], tau)
+}
+
+for (w in 1:9){
+ beta1[w] ~ dnorm(0,0.001)
+ beta2[w] ~ dnorm(0,0.001)
+ beta3[w] ~ dnorm(0,0.001)
+ beta4[w] ~ dnorm(0,0.001)
+ beta5[w] ~ dnorm(0,0.001)
+}
+tau ~ dgamma(100, 1)
+	
+#Priors 
+alpha ~ dnorm(0,0.001)
+
+for (j in 1:9) { 
+  gama[j] ~ dnorm(0,0.001)
+}
+
+
+#Prediction 1
+for (i in 1:n) { 
+  yf1[i] ~ dpois(mu[i]) 
+}
+
+#Estimable quantities
+alpha.adj <- alpha+mean(gama[])
+
+for (j in 1:9) { 
+	gama.adj[j] <- gama[j]-mean(gama[])
+}
+
+}
+
+

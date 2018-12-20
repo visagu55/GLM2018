@@ -1,0 +1,493 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include=FALSE}
+#Configuración inicial del usuario
+library(R2OpenBUGS)
+options(repos="http://cran.itam.mx")
+wdir<-"C:/Users/psalfi/Documents/ModelosLinealesGeneralizados/Examen"
+setwd(wdir)
+
+##Funciones utiles
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+
+Result<-function(simula)
+{
+out<-simula$sims.list
+#Para beta0
+b0<-out$beta[,1]
+par(mfrow=c(2,2))
+plot(b0,type="l")
+plot(cumsum(b0)/(1:length(b0)),type="l")
+hist(b0,freq=FALSE)
+acf(b0)
+
+#Para beta1
+b1<-out$beta[,2]
+par(mfrow=c(2,2))
+plot(b1,type="l")
+plot(cumsum(b1)/(1:length(b1)),type="l")
+hist(b1,freq=FALSE)
+acf(b1)
+
+plot(b0,b1)
+
+}
+
+```
+
+1. El Mercado asegurado en México opera en diferentes sectores. Siete de estos sectores son: Accidentes y enfermedades (ACC), Agricultura y ganadería (AGR), automóviles (AUT), gastos médicos mayores (MED), Incendios (FIR), responsabilidad civil y riesgos profesionales (LIA) y salud (HEA). Es de interés para las compañías de seguros predecir el monto de reclamación (Yi) en términos de la prima cobrada (Xi), medida en millones de pesos. La comisión nacional de seguros y fianzas junta la información de todas las compañías de seguro año con año para cada uno de los 32 etados de la republica y en algunos casos para el extranjero.
+
+Pata el año 2010 se cuenta con n=228 registros clasificados por sector asegurados.
+
+a) Realiza una gráfica de dispersión entre $Xi$ vs $Yi$. Comenta sobre la posible relación entre estas dos variables 
+
+Se observa una relación positiva de los datos, es decir al incrementarse las primas emitidas el número de siniestro de igual forma se ve incrementado. Es por ello que es factible que podamos realizar una regresión lineal a los mismos
+
+```{r}
+#Cargamos los datos y graficamos
+datos<-read.csv("FES2010c.csv",header=TRUE)
+nombres<-c("Entidad","Operacion","Prima","Siniestro","z1","z2","z3","z4","z5","z6","z7")
+names(datos)<-nombres
+n<-nrow(datos)
+
+x_n<-log(datos$Prima)
+y_n<-log(datos$Siniestro)
+
+plot(x_n,y_n)
+```
+b) Ajusta un modelo de regresión lineal normal a los datos
+
+```{r}
+#Modelo Normal
+#-Defining data-
+  data<-list("n"=n, "y"=y_n,"x"=x_n)
+  #-Defining inits-
+  inits<-function(){list(beta=rep(0,2),tau=1,yf=rep(0,n))}
+  #-Selecting parameters to monitor-
+  parameters<-c("beta","tau","yf")
+  #-Running code-
+  exa_b<-bugs(data,inits,parameters,model.file="Exa_b.txt",            n.iter=10000,n.chains=1,n.burnin=1000)
+
+  
+```
+
+En relación a los coeficientes obtenidos por el modelo para alfa(b0), podemos ver en la grafica que toma valores igual a cero. Por lo que nos llevaría a pensar que no es significante para el modelo.
+
+Por otra parte el coeficiente para beta(b1), no toma el valor igual a cero, por lo que diriamos que este coeficiente si es significativo para nuestra variable.
+
+
+```{r}  
+
+out_b<-Result(exa_b)
+
+```
+
+
+El estimador puntual para alfa es -0.006651439 con un intervalo al 95% de confianza igual a (-0.27860000, 0.2564025), el cual contiene al cero, por lo cual podemos concluir que no es un coeficiente significativo.
+
+El estimador puntual para beta es igual 0.854498111 con intervalo de confianza igual a (0.79719750,0.9125025). Por lo cual este coeficiente es significativo.
+
+Adicional se puede observar que al graficar las betas, hay una correlación negativa. Por lo que beta, sería suficiente para explicar el modelo.
+
+Adicional podemos decir que por cada incremento de x, y se ve incrementado beta veces en escala logaritmica.
+
+```{r}  
+ #OpenBUGS
+  out_b.sum<-exa_b$summary
+ #print(out_b.sum)
+  head(out_b.sum)
+
+```
+
+```{r}
+  #DIC
+  out_b.yf<-out_b.sum[grep("yf",rownames(out_b.sum)),]
+  out_b.dic<-exa_b$DIC
+  seudoR_b<-cor(y_n,out_b.yf[,1])
+  print(out_b.dic)
+  print(seudoR_b)
+  
+```
+
+```{r}
+#Predictions
+or<-order(x_n)
+ymin<-min(y_n,out_b.yf[,c(1,3,7)])
+ymax<-max(y_n,out_b.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x_n,y_n,ylim=c(ymin,ymax))
+#Modelo 1
+lines(x_n[or],out_b.yf[or,1],lwd=2,col=2)
+lines(x_n[or],out_b.yf[or,3],lty=2,col=2)
+lines(x_n[or],out_b.yf[or,7],lty=2,col=2)
+
+```
+
+
+c)Ajusta un modelo lineal generalizado gamma
+
+```{r}
+#Modelo de regresión gamma
+
+y_g<-(datos$Siniestro)/1000
+x_g<-(datos$Prima)/1000
+
+#-Defining data-
+data<-list("n"=n, "y"=y_g,"x"=x_g)
+#-Defining inits-
+
+inits<-function(){list(beta=rep(1,2),r=1,yf=rep(0,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("beta","r","yf")
+#-Running code-
+
+
+exa_c<-bugs(data,inits,parameters,model.file="Exa_c.txt",            n.iter=10000,n.chains=1,n.burnin=1000)
+
+
+```
+
+El estimador para alfa(b0), toma valores mayores a cero. Nos llevaría a pensar que es significante para el modelo.
+
+El coeficiente beta(b1), no toma el valores igual a cero, por lo que es coeficiente si es significativo para nuestra modelo.
+
+Adicionalmente se puede observar en las gráficas que la convergencia para alfa, fue mucho mas dificil de lograr en la simulación, haciendo incluso que el computo de la misma, fuese mucho mas tardado que en el ejercicio anterior. 
+
+
+```{r}  
+
+out_c<-Result(exa_c)
+
+```
+
+El estimador puntual para alfa es  0.00432663 con un intervalo al 95% de confianza igual a (0.0023400000, 0.00992400), el cual no contiene al cero.
+
+El estimador puntual para beta es igual 0.77313010 con intervalo de confianza igual a (0.6226000000,0.90280750). Por lo cual este coeficiente es significativo.
+
+Adicional se puede observar que al graficar las betas, no hay una correlación. Ambos modelos son significativos.
+
+En el caso particular por cada unidad de cambio en "x", y
+
+
+
+```{r}  
+  #OpenBUGS
+  out_c.sum<-exa_c$summary
+ #print(out_b.sum)
+  head(out_c.sum)
+  
+```
+
+```{r}
+  #DIC
+  out_c.yf<-out_c.sum[grep("yf",rownames(out_c.sum)),]
+  out_c.dic<-exa_c$DIC
+  seudoR_c<-cor(y_g,out_c.yf[,1])
+  print(out_c.dic)
+  print(seudoR_c)
+  
+```
+
+```{r}
+#Predictions
+or<-order(x_g)
+ymin<-min(y_g,out_c.yf[,c(1,3,7)])
+ymax<-max(y_g,out_c.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x_g,y_g,ylim=c(ymin,ymax))
+#Modelo 1
+lines(x_g[or],out_c.yf[or,1],lwd=2,col=2)
+lines(x_g[or],out_c.yf[or,3],lty=2,col=2)
+lines(x_g[or],out_c.yf[or,7],lty=2,col=2)
+
+```
+d) Compara los modelos del inciso b y c.
+
+En cuanto al valor al criterio de comparación pseudo R2^ podríamos decir que el mejor modelo que ajusta a los datos es el modelo gamma. 
+
+Llama mi atención que para montos grandes de siniestros la banda del intervalo de confianza sea muy grande. En el negocio de seguro, para los siniestros pocos probables los costos suele ser muy elevados.
+
+
+
+e)
+
+```{r}
+  #Modelo Normal
+
+  #-Defining data-
+  data<-list("n"=n, "y"=y_n,"x"=x_n,
+             "z2"=datos$z2,
+             "z3"=datos$z3,
+             "z4"=datos$z4,
+             "z5"=datos$z5,
+             "z6"=datos$z6,
+             "z7"=datos$z7)
+  #-Defining inits-
+  inits<-function(){list(beta=rep(0,2),tau=1,yf=rep(0,n),a=rep(0,6),b=rep(0,6))}
+  
+  #-Selecting parameters to monitor-
+  parameters<-c("beta","a","b","tau","yf")
+  #-Running code-
+
+    exa_e<-bugs(data,inits,parameters,model.file="Exa_e.txt",            n.iter=10000,n.chains=1,n.burnin=1000)
+```
+    
+```{r}  
+out_e<-Result(exa_e)
+```
+
+El parámetro alfa para el model general toma relevancia, con un estimación puntual igual a 1.6995107 y un intervalo de confianza igual a (1.1380000, 2.23300000).
+
+El parámetro beta, se ve disminuido, con una estimación puntual de 0.2838213 con un intervalo (0.1423975, 0.43050500)
+
+Podemos observas que las alfas correspondientes a cada uno de los modelos son signifivas, salvo el correspondiente a z5, correspondiente al ramo de incendios.
+
+Por otra parte al disminuir la beta general del modelo, se ve el efecto del ramo o sector que tiene sobre los siniestros. Donde el ramo de Gastos Médicos mayores y autos son los coeficientes con mayor peso.
+
+```{r}  
+  #OpenBUGS
+  out_e.sum<-exa_e$summary
+  print(out_e.sum[1:20,])
+  head(out_e.sum)
+  
+```
+
+```{r}
+  #DIC
+  out_e.yf<-out_e.sum[grep("yf",rownames(out_e.sum)),]
+  out_e.dic<-exa_e$DIC
+  seudoR_e<-cor(y_n,out_e.yf[,1])
+  print(out_e.dic)
+  print(seudoR_e)
+  
+```
+
+
+```{r}
+#Predictions
+or<-order(x_n)
+ymin<-min(y_n,out_e.yf[,c(1,3,7)])
+ymax<-max(y_n,out_e.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x_n,y_n,ylim=c(ymin,ymax))
+#Modelo 1
+lines(x_n[or],out_e.yf[or,1],lwd=2,col=2)
+lines(x_n[or],out_e.yf[or,3],lty=2,col=2)
+lines(x_n[or],out_e.yf[or,7],lty=2,col=2)
+
+```
+f)¿Cuál es la interpretación de alfa y beta en el modelo del inciso (e)? Que interpretación tiene
+
+La alfa y beta del inciso e) refleja el peso de todas las variables en su conjunto, el peso de estas variables se ve reforzado o decrementado al combinarse con las alfas y betas para cada variable indicadora.  
+
+
+g)Ajusta un modelo lineal generalizado gamma para los montos de reclamación
+
+```{r}
+#Modelo de regresión gamma
+
+#-Defining data-
+data<-list("n"=n, "y"=y_g,"x"=x_g,
+             "z2"=datos$z2,
+             "z3"=datos$z3,
+             "z4"=datos$z4,
+             "z5"=datos$z5,
+             "z6"=datos$z6,
+             "z7"=datos$z7)
+  #-Defining inits-
+
+inits<-function(){list(beta=rep(1,2),a=rep(1,6),b=rep(1,6),r=1,yf=rep(0,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("beta","a","b","r","yf")
+#-Running code-
+
+
+exa_g<-bugs(data,inits,parameters,model.file="Exa_g.txt",            n.iter=10000,n.chains=1,n.burnin=1000)
+
+```
+
+
+Los estimadores para alfa y beta para el modelo general, en el cual estan incluidas todas las variables son relevantes, puesto que no contiene el cero en su respectivo intervalo de confianza.
+
+Por otro lado, las alfas y betas relevantes, que ponderan mayor información por sector asegurador corresponden salud, agricultura y ganaderia 
+
+```{r}  
+  #OpenBUGS
+  out_g.sum<-exa_g$summary
+  print(out_g.sum[1:14,])
+  #head(out_g.sum)
+  
+```
+
+
+```{r}
+  #DIC
+  out_g.yf<-out_g.sum[grep("yf",rownames(out_g.sum)),]
+  out_g.dic<-exa_g$DIC
+  seudoR_g<-cor(y_g,out_g.yf[,1])
+  print(out_g.dic)
+  print(seudoR_g)
+  
+```
+
+
+```{r}
+#Predictions
+or<-order(x_g)
+ymin<-min(y_g,out_g.yf[,c(1,3,7)])
+ymax<-max(y_g,out_g.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x_g,y_g,ylim=c(ymin,ymax))
+#Modelo 1
+lines(x_g[or],out_g.yf[or,1],lwd=2,col=2)
+lines(x_g[or],out_g.yf[or,3],lty=2,col=2)
+lines(x_g[or],out_g.yf[or,7],lty=2,col=2)
+
+```
+h) El mejor modelo que resulto de comparar los modelos gammas corresponde al que no desagrega los pesos por sector asegurador con una r^2 del 95% vs 90%. Perdiendo ajuste para valores cercanos a cero, pero cuidando el ajuste para valores grandes.
+
+
+i) Conclusiones:
+
+Podemos decir que dada la naturaleza de nuestros datos, donde "y" siempre toma valores positivos es mejor proponer modelos gamma.
+
+El mejor modelo fue un modelo gamma con liga igual a mu, sin considerar la ponderación por ramo de los parámetros, ya que se perdio información para valores pequeños. 
+
+
+
+```
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-beta[1]+beta[2]*x[i]
+       	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+tau ~ dgamma(0.001,0.001)
+#Prediction
+for (i in 1:n) { yf[i] ~ dnorm(mu[i],tau) }
+}
+
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dgamma(r,lambda[i])
+        lambda[i]<-r/(mu[i])
+	mu[i]<-beta[1]+beta[2]*x[i]
+       	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+r ~ dunif(0,100)
+#Prediction
+for (i in 1:n) { yf[i] ~ dgamma(r,lambda[i]) }
+}
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-beta[1]+beta[2]*x[i]
+	       +a[1]*z2[i]
+	       +a[2]*z3[i]
+               +a[3]*z4[i]
+               +a[4]*z5[i]
+               +a[5]*z6[i] 
+               +a[6]*z7[i]
+               +b[1]*x[i]*z2[i]
+	       +b[2]*x[i]*z3[i]
+	       +b[3]*x[i]*z4[i]
+	       +b[4]*x[i]*z5[i]
+	       +b[5]*x[i]*z6[i]
+	       +b[6]*x[i]*z7[i]      	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+for (j in 1:6) { a[j] ~ dnorm(0,0.001) 
+                 b[j] ~ dnorm(0,0.001) }
+tau ~ dgamma(0.001,0.001)
+#Prediction
+for (i in 1:n) { yf[i] ~ dnorm(mu[i],tau) }
+}
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+	mu[i]<-beta[1]+beta[2]*x[i]
+	       +a[1]*z2[i]
+	       +a[2]*z3[i]
+               +a[3]*z4[i]
+               +a[4]*z5[i]
+               +a[5]*z6[i] 
+               +a[6]*z7[i]
+               +b[1]*x[i]*z2[i]
+	       +b[2]*x[i]*z3[i]
+	       +b[3]*x[i]*z4[i]
+	       +b[4]*x[i]*z5[i]
+	       +b[5]*x[i]*z6[i]
+	       +b[6]*x[i]*z7[i]      	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+for (j in 1:6) { a[j] ~ dnorm(0,0.001) 
+                 b[j] ~ dnorm(0,0.001) }
+tau ~ dgamma(0.001,0.001)
+#Prediction
+for (i in 1:n) { yf[i] ~ dnorm(mu[i],tau) }
+}
+
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dgamma(r,lambda[i])
+        lambda[i]<-r/(mu[i])
+	mu[i]<-beta[1]+beta[2]*x[i]
+               +a[1]*z2[i]
+	       +a[2]*z3[i]
+               +a[3]*z4[i]
+               +a[4]*z5[i]
+               +a[5]*z6[i] 
+               +a[6]*z7[i]
+               +b[1]*x[i]*z2[i]
+	       +b[2]*x[i]*z3[i]
+	       +b[3]*x[i]*z4[i]
+	       +b[4]*x[i]*z5[i]
+	       +b[5]*x[i]*z6[i]
+	       +b[6]*x[i]*z7[i]      	
+}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+for (j in 1:6) { a[j] ~ dnorm(0,0.001) 
+                 b[j] ~ dnorm(0,0.001) }
+r ~ dunif(0,100)
+#Prediction
+for (i in 1:n) { yf[i] ~ dgamma(r,lambda[i]) }
+}
+
+
+
+```

@@ -1,0 +1,16 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dgamma(shape,tau[i])
+	tau[i]<-shape/(mu[i])
+	mu[i]<-beta[1]+beta[2]*x[i]
+	}
+#Priors 
+for (j in 1:2) { beta[j] ~ dnorm(0,0.001) }
+shape ~ dunif(0,100)
+
+#Prediction 1
+for (i in 1:n) { yf1[i] ~ dgamma(shape,tau[i]) }
+
+}

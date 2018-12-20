@@ -1,0 +1,16 @@
+model
+{
+#Likelihood
+for (i in 1:n) {
+	y[i] ~ dgamma(r,lambda[i])
+        lambda[i]<-r/(mu[i])
+	mu[i]<-alpha+beta*x[i]
+       	
+}
+#Priors 
+alpha ~ dnorm(0,0.001)
+beta ~ dnorm(0,0.001)
+r ~ dunif(0,100)
+#Prediction
+for (i in 1:n) { yf[i] ~ dgamma(r,lambda[i]) }
+}

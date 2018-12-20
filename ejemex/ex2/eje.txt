@@ -1,0 +1,22 @@
+model
+{
+
+for (i in 1:n) {
+	y[i] ~ dnorm(mu[i],tau)
+        mu[i]<-alpha+beta*x[i]+a[1]*z1[i]+a[2]*z2[i]+a[3]*z3[i]+a[4]*z4[i]+a[5]*z5[i]
+                         +a[6]*z6[i]+b[1]*z1[i]*x[i]+a[2]*z2[i]*x[i]+a[3]*z3[i]*x[i]
+                              +a[4]*z4[i]*x[i]+a[5]*z5[i]*x[i]+a[6]*z6[i]*x[i]
+	}
+
+#Priors 
+beta ~ dnorm(0,0.0001)
+tau ~ dgamma(0.0001,0.0001)
+alpha ~ dnorm(0,0.0001)
+
+for (j in 1:6){a[j]~dnorm(0,0.0001)}
+for (j in 1:6){b[j]~dnorm(0,0.0001)}
+
+#Prediction 1
+for (i in 1:n) { yf[i] ~ dnorm(mu[i],tau) }
+
+}

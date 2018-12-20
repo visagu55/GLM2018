@@ -1,0 +1,132 @@
+---
+title: "ejemex"
+author: "Abraham Nieto 51556"
+date: "21 de septiembre de 2018"
+output: html_document
+---
+```{r}
+library(tidyverse)
+library(gtools)
+#Leemos datos
+mort<-read.table("http://allman.rhon.itam.mx/~lnieto/index_archivos/Mortalidad.csv",sep=",",header=TRUE)
+mort
+```
+
+a)
+```{r}
+x<-(mort$Edad.Sup+mort$Edad.Inf)/2
+yh<-logit(mort$Muertes.H/mort$Expuestos.H)
+ym<-logit(mort$Muertes.M/mort$Expuestos.M)
+
+plot(x,yh)
+plot(x,ym)
+```
+
+b)
+```{r}
+library(R2OpenBUGS)
+library(R2jags)
+
+n<-17
+
+#-Defining data-
+data<-list("n"=n,"x"=x, "y"=yh)
+
+inits<-function(){list(alpha=0,beta=0,tau=1,yf1=rep(1,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("alpha","beta","tau","yf1")
+
+#-Running code-
+#OpenBUGS
+ex1.sim<-bugs(data,inits,parameters,model.file="/home/abraham/RA2018/ejemex/ex1.txt",
+              n.iter=5000,n.chains=1,n.burnin=500)
+
+```
+
+
+```{r}
+#OpenBUGS
+out<-ex1.sim$sims.list
+print(out)
+
+#OpenBUGS
+out.sum<-ex1.sim$summary
+
+print(out.sum)
+
+```
+
+```{r}
+#OpenBUGS
+out.dic<-ex1.sim$DIC
+print(out.dic)
+```
+
+```{r}
+out.yf<-out.sum[grep("yf1",rownames(out.sum)),]
+ymin<-min(yh,out.yf[,c(1,3,7)])
+out.yf[,c(1,3,7)]
+ymax<-max(yh,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,yh,ylim=c(ymin,ymax))
+```
+```{r}
+#Pseudo Rcuadrada hombres
+plot(yh,out.yf[,1])
+R2 <- (cor(yh,out.yf[,1]))^2
+print(R2)
+```
+
+Mujeres
+
+```{r}
+#-Defining data-
+data<-list("n"=n,"x"=x, "y"=ym)
+
+inits<-function(){list(alpha=0,beta=0,tau=1,yf1=rep(1,n))}
+
+#-Selecting parameters to monitor-
+parameters<-c("alpha","beta","tau","yf1")
+
+#-Running code-
+#OpenBUGS
+ex1m.sim<-bugs(data,inits,parameters,model.file="/home/abraham/RA2018/ejemex/ex1.txt",
+              n.iter=5000,n.chains=1,n.burnin=500)
+
+#OpenBUGS
+out<-ex1m.sim$sims.list
+print(out)
+
+#OpenBUGS
+out.sum<-ex1m.sim$summary
+
+print(out.sum)
+
+#OpenBUGS
+out.dic<-ex1m.sim$DIC
+print(out.dic)
+
+out.yf<-out.sum[grep("yf1",rownames(out.sum)),]
+ymin<-min(ym,out.yf[,c(1,3,7)])
+out.yf[,c(1,3,7)]
+ymax<-max(ym,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,ym,ylim=c(ymin,ymax))
+
+
+#Pseudo Rcuadrada hombres
+plot(ym,out.yf[,1])
+R2 <- (cor(ym,out.yf[,1]))^2
+print(R2)
+
+```
+
+c)
+```{r}
+th<-mort$Muertes.H/mort$Expuestos.H
+tm<-mort$Muertes.M/mort$Expuestos.M
+plot(x,th)
+plot(x,tm)
+```
+

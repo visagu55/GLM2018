@@ -1,0 +1,388 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(R2OpenBUGS)
+library(R2jags)
+
+wdir<-"/home/abraham/RA2018/ejemex/ex2"
+setwd(wdir)
+
+```
+```{r}
+#--- Funciones utiles ---
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+```
+
+Creamos Variables...
+```{r}
+seg<-read.csv("FES2010c.csv",header=TRUE)
+head(seg)
+y<-log(seg$SINIESTROS.PAGADOS)
+x<-log(seg$PRIMA.EMITIDA)
+n<-nrow(seg)
+```
+
+```{r}
+plot(x,y)
+```
+
+```{r}
+
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"y"=y,"x"=x)
+#-Defining inits-
+inits<-function(){list(alpha=0,beta=0,tau=1,yf=rep(0,n))}
+
+parameters<-c("alpha","beta","tau","yf")
+
+#OpenBUGS
+exseg1.sim<-bugs(data,inits,parameters,model.file="ejb.txt",
+              n.iter=20000,n.chains=2,n.burnin=2000)
+
+```
+
+
+```{r}
+out<-exseg1.sim$sims.list
+
+b<-out$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-out$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sum<-exseg1.sim$summary
+
+plot(out$alpha,out$beta)
+```
+
+```{r}
+
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+plot(out.yf[1:n,1],y,type ="p")
+```
+
+
+```{r}
+#DIC
+
+out.dic<-exseg1.sim$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dic)
+print(out.sum)
+
+```
+
+$R^2$
+
+```{r}
+R2<-(cor(y,out.yf[1:n,1]))
+print(R2)
+
+
+```
+```{r}
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+
+#Modelo 1
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+
+
+```
+
+
+
+
+c) gamma
+
+
+```{r}
+y<-(seg$SINIESTROS.PAGADOS)/1000
+x<-(seg$PRIMA.EMITIDA)/1000
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"y"=y,"x"=x)
+#-Defining inits-
+inits<-function(){list(beta=rep(1,2),r=1,yf=rep(0,n))}
+
+parameters<-c("beta","r","yf")
+
+#OpenBUGS
+exseg2.sim<-bugs(data,inits,parameters,model.file="ejc.txt",
+              n.iter=10000,n.chains=2,n.burnin=1000)
+
+```
+
+
+```{r}
+out<-exseg2.sim$sims.list
+
+b<-out$beta[,1]
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-out$beta[,2]
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sum<-exseg2.sim$summary
+
+plot(out$beta[,1],out$beta[,2])
+```
+
+```{r}
+
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+plot(out.yf[1:n,1],y,type ="p")
+```
+
+
+```{r}
+#DIC
+
+out.dic<-exseg2.sim$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dic)
+print(out.sum[1:3,c(1,3,7)])
+
+```
+
+$R^2$
+
+```{r}
+R2<-(cor(y,out.yf[1:n,1]))
+print(R2)
+
+
+```
+```{r}
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+
+#Modelo 1
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+```
+
+
+d)es mejor el gamma ya que tiene una r2 de 95% vs. cas 90% del primero el dic no es comparable ya que los modelos no son equiparables por la escala.
+
+
+
+e)
+
+```{r}
+y<-log(seg$SINIESTROS.PAGADOS)#/1000
+x<-log(seg$PRIMA.EMITIDA)#/1000
+
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"y"=y,"x"=x,"z1"=seg$z1,"z2"=seg$z2,"z3"=seg$z3,"z4"=seg$z4,"z5"=seg$z5,"z6"=seg$z6)
+#-Defining inits-
+inits<-function(){list(alpha=0,beta=0,tau=1,a=rep(0,6),b=rep(0,6),yf=rep(0,n))}
+
+parameters<-c("alpha","beta","a","b","tau","yf")
+
+#OpenBUGS
+exseg3.sim<-bugs(data,inits,parameters,model.file="eje.txt",
+              n.iter=10000,n.chains=2,n.burnin=1000)
+
+```
+
+
+```{r}
+out<-exseg3.sim$sims.list
+
+b<-out$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-out$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sum<-exseg3.sim$summary
+
+plot(out$alpha,out$beta)
+```
+
+```{r}
+
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+plot(out.yf[1:n,1],y,type ="p")
+```
+
+
+```{r}
+#DIC
+
+out.dic<-exseg3.sim$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dic)
+print(out.sum[1:14,c(1,3,7)])
+
+```
+
+$R^2$
+
+```{r}
+R2<-(cor(y,out.yf[1:n,1]))
+print(R2)
+
+
+```
+
+f)Acc y auto tienen relavancia posistiva en el calculo de los siniestros, aunque en la sinteracciones el monto de la prima de acc contribuye en una dismiucion de los siniestros
+
+g)
+```{r}
+y<-(seg$SINIESTROS.PAGADOS)/1000
+x<-(seg$PRIMA.EMITIDA)/1000
+
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"y"=y,"x"=x,"z1"=seg$z1,"z2"=seg$z2,"z3"=seg$z3,"z4"=seg$z4,"z5"=seg$z5,"z6"=seg$z6)
+#-Defining inits-
+inits<-function(){list(beta=rep(0,2),r=1,a=rep(0,6),b=rep(0,6),yf=rep(0,n))}
+
+parameters<-c("beta","a","b","r","yf")
+
+#OpenBUGS
+exseg4.sim<-bugs(data,inits,parameters,model.file="ejg.txt",
+              n.iter=5000,n.chains=1,n.burnin=500)
+
+```
+
+
+```{r}
+out<-exseg3.sim$sims.list
+
+b<-out$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-out$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sum<-exseg3.sim$summary
+
+plot(out$alpha,out$beta)
+```
+
+```{r}
+
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(x)
+ymin<-min(y,out.yf[,c(1,3,7)])
+ymax<-max(y,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(x,y,ylim=c(ymin,ymax))
+lines(x[or],out.yf[or,1],lwd=2,col=2)
+lines(x[or],out.yf[or,3],lty=2,col=2)
+lines(x[or],out.yf[or,7],lty=2,col=2)
+
+plot(out.yf[1:n,1],y,type ="p")
+```
+
+
+```{r}
+#DIC
+
+out.dic<-exseg3.sim$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dic)
+print(out.sum[1:14,c(1,3,7)])
+
+```
+
+$R^2$
+
+```{r}
+R2<-(cor(y,out.yf[1:n,1]))
+print(R2)
+
+
+```

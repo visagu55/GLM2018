@@ -1,0 +1,30 @@
+model{
+#Likelihood
+for (i in 1:n){
+y[i]~dbin(pi[i],e[i])
+
+logit(pi[i])<-b[1]+b[2]*x50[i]+b[3]*x100[i]+b[4]*x200[i]+b[5]*x500[i]
+
+
+}
+
+
+p[1]<-1000*exp(b[1])/(1+exp(b[1]))
+
+for (k in 2:5){p[k]<-1000*exp(b[1]+b[k])/(1+exp(b[1]+b[k]))}
+
+#Priors
+
+for (j in 1:5){
+b[j]~dnorm(0,0.001)
+
+}
+
+
+for (i in 1:n) { yf[i] ~ dbin(pi[i],e[i])}
+
+prob[1]<-1000*exp(b[1])/(1+exp(b[1]))
+
+for (k in 2:5){prob[k]<-1000*exp(b[1]+b[k])/(1+exp(b[1]+b[k]))}
+
+}

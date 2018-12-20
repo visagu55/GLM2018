@@ -1,0 +1,316 @@
+---
+title: "ejexam"
+author: "Abraham Nieto 51556"
+date: "4 de octubre de 2018"
+output: html_document
+---
+```{r}
+library(R2OpenBUGS)
+library(R2jags)
+
+wdir<-"/home/abraham/RA2018/ejemex"
+setwd(wdir)
+
+```
+```{r}
+#--- Funciones utiles ---
+prob<-function(x){
+  out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+  out
+}
+```
+
+
+Creamos Variables...
+```{r}
+mort<-read.csv("http://allman.rhon.itam.mx/~lnieto/index_archivos/Mortalidad.csv",header=TRUE)
+head(mort)
+#Hacemos la variables X y Y
+X<-(mort$Edad.Inf+mort$Edad.Sup)/2
+ph<-mort$Muertes.H/mort$Expuestos.H
+pm<-mort$Muertes.M/mort$Expuestos.M
+Yh<-log(ph/(1-ph))
+Ym<-log(pm/(1-pm))
+
+```
+
+```{r}
+#Hombres
+plot(X,Yh,xlab = "Edad",ylab = "logit-tasa defunciones Hombres")
+abline(v=60,col="red")
+cor(X,Yh)
+
+#Mujeres
+plot(X,Ym,xlab = "Edad",ylab = "logit-tasa defunciones Mujeres")
+abline(v=60,col="red")
+cor(X,Ym)
+```
+
+b)
+```{r}
+n<-nrow(mort)
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"Y"=Ym,"X"=X)
+#-Defining inits-
+inits<-function(){list(alpha=0,beta=0,tau=1,yf=rep(0,n))}
+
+parameters<-c("alpha","beta","tau","yf")
+
+#OpenBUGS
+ex1.sim<-bugs(data,inits,parameters,model.file="ejexam1.txt",
+              n.iter=5000,n.chains=1,n.burnin=500,n.thin = 1)
+
+```
+
+
+```{r}
+out<-ex1.sim$sims.list
+
+b<-out$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-out$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sum<-ex1.sim$summary
+
+```
+
+```{r}
+
+#Predictions
+out.yf<-out.sum[grep("yf",rownames(out.sum)),]
+or<-order(X)
+ymin<-min(Ym,out.yf[,c(1,3,7)])
+ymax<-max(Ym,out.yf[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(X,Ym,ylim=c(ymin,ymax))
+lines(X[or],out.yf[or,1],lwd=2,col=2)
+lines(X[or],out.yf[or,3],lty=2,col=2)
+lines(X[or],out.yf[or,7],lty=2,col=2)
+
+plot(out.yf[1:n,1],Ym,type ="p")
+```
+
+```{r}
+#DIC
+
+out.dic<-ex1.sim$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dic)
+print(out.sum)
+
+```
+
+$R^2$
+
+```{r}
+R2<-(cor(Ym,out.yf[1:n,1]))^2
+print(R2)
+
+
+```
+
+c)
+```{r}
+Zh<-mort$Muertes.H/mort$Expuestos.H
+Zm<-mort$Muertes.M/mort$Expuestos.M
+
+plot(X,Zh,xlab = "Edad",ylab = "tasa Hombres",type="l")
+cor(X,Zh)
+
+plot(X,Zm,xlab = "Edad",ylab = "tasa Mujeres",type = "l")
+cor(X,Zm)
+
+
+```
+d)
+
+```{r}
+n<-nrow(mort)
+#-Defining data-
+#data<-list(x1=sal$X1,x2=sal$X2,x3=sal$X3)
+data<-list("n"=n,"D"=mort$Muertes.H,"E"=mort$Expuestos.H,"X"=X)
+#-Defining inits-
+inits<-function(){list(alpha=0,beta=0,Df=rep(0,n))}
+
+parameters<-c("alpha","beta","Df","q")
+
+#OpenBUGS
+ex2.simh<-bugs(data,inits,parameters,model.file="ejexam2.txt",
+              n.iter=5000,n.chains=1,n.burnin=500,n.thin = 1)
+
+#Mujeres
+
+data<-list("n"=n,"D"=mort$Muertes.M,"E"=mort$Expuestos.M,"X"=X)
+#-Defining inits-
+inits<-function(){list(alpha=0,beta=0,Df=rep(0,n))}
+
+parameters<-c("alpha","beta","Df","q")
+
+#OpenBUGS
+ex2.simm<-bugs(data,inits,parameters,model.file="ejexam2.txt",
+              n.iter=5000,n.chains=1,n.burnin=500,n.thin = 1)
+
+```
+
+```{r}
+outh<-ex2.simh$sims.list
+
+b<-outh$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-outh$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.sumh<-ex2.sim$summary
+
+#Mujeres
+outm<-ex2.simm$sims.list
+
+b<-outm$alpha
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "alpha")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "alpha")
+hist(b,freq=FALSE, main = "alpha")
+acf(b)
+
+b<-outm$beta
+par(mfrow=c(1,1))
+plot(b,type="l",xlab = "beta")
+plot(cumsum(b)/(1:length(b)),type="l",xlab = "beta")
+hist(b,freq=FALSE, main = "beta")
+acf(b)
+
+out.summ<-ex2.simm$summary
+
+```
+
+```{r}
+Dh<-mort$Muertes.H
+Dm<-mort$Muertes.M
+
+#Predictions
+out.yfh<-out.sumh[grep("Df",rownames(out.sumh)),]
+or<-order(X)
+ymin<-min(Dh,out.yfh[,c(1,3,7)])
+ymax<-max(Dh,out.yfh[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(X,Dh,ylim=c(ymin,ymax))
+lines(X[or],out.yfh[or,1],lwd=2,col=2)
+lines(X[or],out.yfh[or,3],lty=2,col=2)
+lines(X[or],out.yfh[or,7],lty=2,col=2)
+
+plot(out.yfh[1:n,1],Dh,type ="p")
+
+#Mujeres
+#Predictions
+out.yfm<-out.summ[grep("Df",rownames(out.summ)),]
+or<-order(X)
+ymin<-min(Dm,out.yfm[,c(1,3,7)])
+ymax<-max(Dm,out.yfm[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(X,Dm,ylim=c(ymin,ymax))
+lines(X[or],out.yfm[or,1],lwd=2,col=2)
+lines(X[or],out.yfm[or,3],lty=2,col=2)
+lines(X[or],out.yfm[or,7],lty=2,col=2)
+
+plot(out.yfm[1:n,1],Dm,type ="p")
+```
+
+
+```{r}
+#DIC
+
+out.dich<-ex2.simh$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dich)
+print(out.sumh)
+
+#Mujeres
+
+#DIC
+
+out.dicm<-ex2.simm$DIC
+#out.dic<-ej4.sim$BUGSoutput$DIC
+print(out.dicm)
+print(out.summ)
+
+```
+
+$R^2$
+
+```{r}
+R2h<-(cor(Dh,out.yfh[1:n,1]))^2
+print(R2h)
+
+#Mujeres
+R2m<-(cor(Dm,out.yfm[1:n,1]))^2
+print(R2m)
+
+```
+
+
+
+e)
+```{r}
+out.qh<-out.sumh[grep("q",rownames(out.sumh)),]
+or<-order(X)
+yminh<-min(Zh,out.qh[,c(1,3,7)])
+ymaxh<-max(Zh,out.qh[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(X,Zh,ylim=c(yminh,ymaxh))
+lines(X[or],out.qh[or,1],lwd=2,col=2)
+lines(X[or],out.qh[or,3],lty=2,col=2)
+lines(X[or],out.qh[or,7],lty=2,col=2)
+
+#Mujeres
+out.qm<-out.summ[grep("q",rownames(out.summ)),]
+or<-order(X)
+yminm<-min(Zm,out.qm[,c(1,3,7)])
+ymaxm<-max(Zm,out.qm[,c(1,3,7)])
+par(mfrow=c(1,1))
+plot(X,Zm,ylim=c(yminm,ymaxm))
+lines(X[or],out.qm[or,1],lwd=2,col=2)
+lines(X[or],out.qm[or,3],lty=2,col=2)
+lines(X[or],out.qm[or,7],lty=2,col=2)
+
+#plot(X,Zm,xlab = "Edad",ylab = "tasa Mujeres",type = "l")
+#cor(X,Zm)
+
+```
+
+f)
+```{r}
+plot(X,out.qh[or,1],ylim=c(yminh,ymaxh))
+lines(X[or],out.qh[or,1],lwd=2,col=2)
+lines(X[or],out.qh[or,3],lty=2,col=2)
+lines(X[or],out.qh[or,7],lty=2,col=2)
+
+par(new=TRUE)
+plot(X,out.qm[or,1],ylim=c(yminm,ymaxm),col="green")
+lines(X[or],out.qm[or,1],lwd=2,col="green")
+lines(X[or],out.qm[or,3],lty=2,col="green")
+lines(X[or],out.qm[or,7],lty=2,col="green")
+
+```
+
+g)
+

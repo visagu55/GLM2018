@@ -1,0 +1,17 @@
+model{
+   for (i in 1:n){
+              D[i]~dbin(q[i],E[i])
+              logit(q[i])<-alpha+beta*X[i]
+
+
+                }
+
+alpha~dnorm(0,0.0001)
+beta~dnorm(0,0.0001)
+
+
+for (i in 1:n){Df[i]~dbin(q[i],E[i]) }
+
+#for (i in 1:n){yf1[i]<-logit(Df[i]/E[i]) }
+
+}

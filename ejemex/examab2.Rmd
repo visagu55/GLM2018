@@ -1,0 +1,80 @@
+---
+title: "examab2"
+author: "Abraham Nieto 51556"
+date: "22 de septiembre de 2018"
+output: html_document
+---
+```{r}
+##Funciones utiles
+prob<-function(x){
+out<-min(length(x[x>0])/length(x),length(x[x<0])/length(x))
+out
+}
+Result<-function(simula)
+{
+out<-simula$sims.list
+#Para beta0
+b0<-out$beta[,1]
+par(mfrow=c(2,2))
+plot(b0,type="l")
+plot(cumsum(b0)/(1:length(b0)),type="l")
+hist(b0,freq=FALSE)
+acf(b0)
+#Para beta1
+b1<-out$beta[,2]
+par(mfrow=c(2,2))
+plot(b1,type="l")
+plot(cumsum(b1)/(1:length(b1)),type="l")
+hist(b1,freq=FALSE)
+acf(b1)
+#Probabilidades
+print (prob(b0))
+print (prob(b1))
+}
+```
+
+
+
+```{r}
+dat<-read.table("http://allman.rhon.itam.mx/~lnieto/index_archivos/mortality.txt",header=TRUE)
+dat
+```
+```{r}
+#Dedinimos las variables a predecir de muertos dado
+n<-nrow(dat)
+m<-1
+nef<-c(100) #numero de expuestos futuros
+xf<-c(200) #numero de horas
+
+plot(dat)
+```
+
+```{r}
+#Establecemos los imputs necesarios para bugs del modelo Binomial
+#-Defining data-
+data<-list("n"=n,"ne"=dat$n,"y"=dat$y,"x"=dat$x,"m"=m,"nef"=nef,"xf"=xf)
+#-Defining inits-
+inits<-function(){list(beta=rep(0,2),yf1=rep(1,n),yf2=1)}
+#-Selecting parameters to monitor-
+parameters<-c("beta","yf1","yf2")
+#-Running code-
+```
+
+
+```{r}
+#OpenBUGS
+#Modelo Binomial
+#Liga logistica
+exa1<-bugs(data,inits,parameters,model.file="ModBinomial.txt",n.iter=50000,n.chains=1,n.burnin=5000)
+#Liga probit
+exa2<-bugs(data,inits,parameters,model.file="ModBinomial.txt",
+n.iter=50000,n.chains=1,n.burnin=5000)
+#Modelo Poisson
+exa3<-bugs(data,inits,parameters,model.file="ModPoisson.txt",
+n.iter=50000,n.chains=1,n.burnin=5000)
+```
+
+```{r}
+out1<-Result(exa1)
+```
+
